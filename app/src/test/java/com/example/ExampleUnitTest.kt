@@ -325,5 +325,13 @@ class ExampleUnitTest {
             assertTrue("Interval $interval must be at least 15 minutes", interval >= 15)
         }
     }
+
+    @Test
+    fun testNotificationChannelConfiguration() {
+        // Must use the new migrated channel ID to force re-creation with sound on existing devices
+        assertEquals("water_reminders_channel_v2", com.example.reminders.ReminderHelper.CHANNEL_ID)
+        assertEquals(1001, com.example.reminders.ReminderHelper.NOTIFICATION_ID)
+        assertEquals("Hydration Reminders", com.example.reminders.ReminderHelper.CHANNEL_NAME)
+    }
 }
 

@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -107,6 +108,8 @@ fun SettingsScreen(
     var showClearHistoryDialog by remember { mutableStateOf(false) }
     var showIntervalDialog by remember { mutableStateOf(false) }
     var showWakingHoursDialog by remember { mutableStateOf(false) }
+    var showPermissionRationaleDialog by remember { mutableStateOf(false) }
+    var hasPromptedNotificationPermission by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -118,9 +121,10 @@ fun SettingsScreen(
                 Toast.makeText(context, "Hydration reminders enabled", Toast.LENGTH_SHORT).show()
             }
         } else {
+            hasPromptedNotificationPermission = true
             Toast.makeText(
                 context,
-                "Notification permission is needed for hydration reminders",
+                "Notification permission denied. Enable in Settings to receive audible alerts.",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -243,7 +247,12 @@ fun SettingsScreen(
                                         Manifest.permission.POST_NOTIFICATIONS
                                     ) == PackageManager.PERMISSION_GRANTED
                                     if (!hasPermission) {
-                                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        if (hasPromptedNotificationPermission) {
+                                            showPermissionRationaleDialog = true
+                                        } else {
+                                            hasPromptedNotificationPermission = true
+                                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        }
                                         return@Switch
                                     }
                                 }
@@ -266,7 +275,7 @@ fun SettingsScreen(
                     )
                 }
 
-                // If reminders are enabled, display interval, waking hours, weekend toggle, and test notification
+                // If reminders are enabled, display interval, waking hours, weekend toggle, sound settings, and test notification
                 if (remindersEnabled) {
                     HorizontalDivider(color = WaterOutline.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 4.dp))
 
@@ -339,11 +348,22 @@ fun SettingsScreen(
 
                     HorizontalDivider(color = WaterOutline.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 4.dp))
 
+                    // Sound & System Alerts Row
+                    SettingsActionRow(
+                        icon = Icons.Default.VolumeUp,
+                        title = "Sound & System Alerts",
+                        subtitle = "Chime, vibration, and banner settings in Android",
+                        onClick = { ReminderHelper.openNotificationSettings(context) },
+                        testTag = "settings_sound_alerts_row"
+                    )
+
+                    HorizontalDivider(color = WaterOutline.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 4.dp))
+
                     // Send Test Reminder Row
                     SettingsActionRow(
                         icon = Icons.Default.NotificationsActive,
                         title = "Send Test Reminder",
-                        subtitle = "Trigger a preview notification now",
+                        subtitle = "Trigger an audible preview notification now",
                         onClick = {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                 val hasPermission = ContextCompat.checkSelfPermission(
@@ -351,7 +371,12 @@ fun SettingsScreen(
                                     Manifest.permission.POST_NOTIFICATIONS
                                 ) == PackageManager.PERMISSION_GRANTED
                                 if (!hasPermission) {
-                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    if (hasPromptedNotificationPermission) {
+                                        showPermissionRationaleDialog = true
+                                    } else {
+                                        hasPromptedNotificationPermission = true
+                                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
                                     return@SettingsActionRow
                                 }
                             }
@@ -362,7 +387,20 @@ fun SettingsScreen(
                                 preferredUnit = preferredUnit
                             )
                             if (dispatched) {
-                                Toast.makeText(context, "Test notification dispatched!", Toast.LENGTH_SHORT).show()
+                                val isSilenced = ReminderHelper.isChannelSoundSilenced(context)
+                                if (isSilenced) {
+                                    Toast.makeText(
+                                        context,
+                                        "Test reminder sent! (Note: Sounds are silenced in system settings)",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Audible test reminder dispatched!",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             } else {
                                 Toast.makeText(context, "Notification permission required", Toast.LENGTH_SHORT).show()
                             }
@@ -780,6 +818,41 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showClearHistoryDialog = false }) {
                     Text("Cancel", color = WaterTextSecondary)
+                }
+            },
+            containerColor = WaterSurface
+        )
+    }
+
+    // Permission Rationale & Settings Guidance Dialog
+    if (showPermissionRationaleDialog) {
+        AlertDialog(
+            onDismissRequest = { showPermissionRationaleDialog = false },
+            title = {
+                Text(
+                    text = "Notification Permission Needed",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Text(
+                    text = "Audible hydration reminders require notification permission. Please open system settings and enable notifications for Hydria.",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = WaterTextSecondary)
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPermissionRationaleDialog = false
+                        ReminderHelper.openNotificationSettings(context)
+                    }
+                ) {
+                    Text("Open Settings", color = WaterPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionRationaleDialog = false }) {
+                    Text("Not Now", color = WaterTextSecondary)
                 }
             },
             containerColor = WaterSurface

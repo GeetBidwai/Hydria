@@ -7,7 +7,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -15,31 +19,94 @@ import com.example.MainActivity
 import java.util.Calendar
 
 object ReminderHelper {
-    const val CHANNEL_ID = "water_reminders_channel"
+    /**
+     * Updated channel ID to migrate existing devices from the silent/default channel
+     * to an explicitly configured audible channel with sound and vibration.
+     */
+    const val CHANNEL_ID = "water_reminders_channel_v2"
     const val CHANNEL_NAME = "Hydration Reminders"
-    const val CHANNEL_DESCRIPTION = "Periodic reminders to drink water during waking hours"
+    const val CHANNEL_DESCRIPTION = "Audible reminders to drink water during waking hours"
     const val NOTIFICATION_ID = 1001
 
     /**
-     * Creates the notification channel on Android 8.0 (API 26) and higher.
+     * Creates or updates the notification channel on Android 8.0 (API 26) and higher
+     * with system-default notification sound, appropriate audio attributes, and vibration.
      */
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                ?: return
+
+            val defaultSoundUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .build()
+
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = CHANNEL_DESCRIPTION
                 enableVibration(true)
+                vibrationPattern = longArrayOf(0, 250, 250, 250)
+                setSound(defaultSoundUri, audioAttributes)
+                setShowBadge(true)
             }
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            notificationManager?.createNotificationChannel(channel)
+
+            notificationManager.createNotificationChannel(channel)
         }
     }
 
     /**
-     * Posts a hydration reminder notification if permissions allow.
+     * Checks if notifications or the channel sound is muted at the system level.
+     */
+    fun isChannelSoundSilenced(context: Context): Boolean {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            return true
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                ?: return false
+            val channel = notificationManager.getNotificationChannel(CHANNEL_ID)
+            if (channel != null) {
+                return channel.importance < NotificationManager.IMPORTANCE_DEFAULT || channel.sound == null
+            }
+        }
+        return false
+    }
+
+    /**
+     * Opens the Android system notification channel settings directly.
+     */
+    fun openNotificationSettings(context: Context) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL_ID)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            } else {
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            }
+        } catch (e: Exception) {
+            val fallbackIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(fallbackIntent)
+        }
+    }
+
+    /**
+     * Posts an audible hydration reminder notification if permissions allow.
      */
     fun showHydrationNotification(
         context: Context,
@@ -82,12 +149,17 @@ object ReminderHelper {
             "Stay refreshed! Remember to drink a glass of water."
         }
 
+        val defaultSoundUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
             .setContentTitle("Time to hydrate! 💧")
             .setContentText(bodyText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSound(defaultSoundUri)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
+            .setVibrate(longArrayOf(0, 250, 250, 250))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
