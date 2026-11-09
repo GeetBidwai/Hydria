@@ -6,6 +6,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,11 +51,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.core.ui.components.WaterCard
 import com.example.core.ui.components.WaterPrimaryButton
 import com.example.core.ui.components.WaterSecondaryButton
@@ -243,24 +246,23 @@ private fun Step1Welcome(
 
         Box(
             modifier = Modifier
-                .size(92.dp)
+                .size(108.dp)
                 .clip(CircleShape)
-                .background(WaterPrimary.copy(alpha = 0.12f))
+                .background(WaterPrimary.copy(alpha = 0.10f))
                 .testTag("onboarding_hero_icon"),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.WaterDrop,
-                contentDescription = "Water droplet",
-                tint = WaterPrimary,
-                modifier = Modifier.size(52.dp)
+            Image(
+                painter = painterResource(id = R.drawable.ic_hydria_logo),
+                contentDescription = "Hydria Logo",
+                modifier = Modifier.size(76.dp)
             )
         }
 
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(
-            text = "Welcome to WaterIntake",
+            text = "Welcome to Hydria",
             style = MaterialTheme.typography.headlineMedium.copy(
                 fontWeight = FontWeight.Bold,
                 fontSize = 28.sp,

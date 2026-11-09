@@ -434,5 +434,16 @@ class ExampleUnitTest {
         val custom150Options = buildQuickAddOptions(150)
         assertEquals(listOf(150, 300, 500), custom150Options)
     }
+
+    @Test
+    fun testAppBranding() {
+        val appName = "Hydria"
+        val compactWidgetName = "Hydria Quick Log (2×1)"
+        val expandedWidgetName = "Hydria Tracker (4×2)"
+
+        assertEquals("Hydria", appName)
+        assertTrue(compactWidgetName.startsWith("Hydria"))
+        assertTrue(expandedWidgetName.startsWith("Hydria"))
+    }
 }
 

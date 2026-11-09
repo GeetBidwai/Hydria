@@ -28,7 +28,7 @@
 
         <!-- Compact Widget (2x1) -->
         <receiver
-            android:name=".widgets.CompactWaterWidgetReceiver"
+            android:name="com.example.widgets.CompactWaterWidgetReceiver"
             android:label="@string/compact_widget_name"
             android:exported="true">
             <intent-filter>
@@ -41,7 +41,7 @@
 
         <!-- Expanded Widget (4x2) -->
         <receiver
-            android:name=".widgets.ExpandedWaterWidgetReceiver"
+            android:name="com.example.widgets.ExpandedWaterWidgetReceiver"
             android:label="@string/expanded_widget_name"
             android:exported="true">
             <intent-filter>

@@ -1,7 +1,7 @@
 <resources>
-    <string name="app_name">WaterIntake</string>
-    <string name="compact_widget_name">Hydria Compact (2×1)</string>
+    <string name="app_name">Hydria</string>
+    <string name="compact_widget_name">Hydria Quick Log (2×1)</string>
     <string name="compact_widget_description">Quick hydration progress and one-tap customizable water logging.</string>
-    <string name="expanded_widget_name">Hydria Overview (4×2)</string>
+    <string name="expanded_widget_name">Hydria Tracker (4×2)</string>
     <string name="expanded_widget_description">Detailed daily intake, target progress, and multi-quantity quick-log buttons.</string>
 </resources>

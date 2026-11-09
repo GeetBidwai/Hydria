@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/water_drop_icon_1793692011215"
+        android:drawable="@drawable/ic_hydria_logo"
         android:gravity="center" />
 </layer-list>
