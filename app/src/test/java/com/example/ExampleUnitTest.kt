@@ -333,5 +333,106 @@ class ExampleUnitTest {
         assertEquals(1001, com.example.reminders.ReminderHelper.NOTIFICATION_ID)
         assertEquals("Hydration Reminders", com.example.reminders.ReminderHelper.CHANNEL_NAME)
     }
+
+    @Test
+    fun testWidgetConstantsAndPresets() {
+        assertEquals(300, AppConstants.DEFAULT_WIDGET_QUICK_ADD_ML)
+        assertEquals(8, AppConstants.WIDGET_PRESET_AMOUNTS.size)
+        assertTrue(AppConstants.WIDGET_PRESET_AMOUNTS.contains(150))
+        assertTrue(AppConstants.WIDGET_PRESET_AMOUNTS.contains(300))
+        assertTrue(AppConstants.WIDGET_PRESET_AMOUNTS.contains(750))
+    }
+
+    @Test
+    fun testWidgetCustomAmountValidation() {
+        fun isValidCustomWidgetAmount(amount: Int?): Boolean {
+            return amount != null && amount in 50..3000
+        }
+
+        assertTrue(isValidCustomWidgetAmount(300))
+        assertTrue(isValidCustomWidgetAmount(50))
+        assertTrue(isValidCustomWidgetAmount(3000))
+        assertTrue(isValidCustomWidgetAmount(350))
+        assertFalse(isValidCustomWidgetAmount(0))
+        assertFalse(isValidCustomWidgetAmount(-100))
+        assertFalse(isValidCustomWidgetAmount(3001))
+        assertFalse(isValidCustomWidgetAmount(null))
+    }
+
+    @Test
+    fun testWidgetMetricsCalculation() {
+        val target = 2000
+
+        // Zero intake
+        val zeroConsumed = 0
+        val zeroFraction = (zeroConsumed.toFloat() / target).coerceIn(0f, 1f)
+        val zeroPercent = ((zeroConsumed.toFloat() / target) * 100).toInt()
+        val zeroRemaining = (target - zeroConsumed).coerceAtLeast(0)
+        assertEquals(0f, zeroFraction, 0.001f)
+        assertEquals(0, zeroPercent)
+        assertEquals(2000, zeroRemaining)
+
+        // Half intake
+        val halfConsumed = 1000
+        val halfFraction = (halfConsumed.toFloat() / target).coerceIn(0f, 1f)
+        val halfPercent = ((halfConsumed.toFloat() / target) * 100).toInt()
+        val halfRemaining = (target - halfConsumed).coerceAtLeast(0)
+        assertEquals(0.5f, halfFraction, 0.001f)
+        assertEquals(50, halfPercent)
+        assertEquals(1000, halfRemaining)
+
+        // Met target
+        val fullConsumed = 2000
+        val fullFraction = (fullConsumed.toFloat() / target).coerceIn(0f, 1f)
+        val fullPercent = ((fullConsumed.toFloat() / target) * 100).toInt()
+        val fullRemaining = (target - fullConsumed).coerceAtLeast(0)
+        assertEquals(1.0f, fullFraction, 0.001f)
+        assertEquals(100, fullPercent)
+        assertEquals(0, fullRemaining)
+
+        // Exceeded target
+        val overConsumed = 2600
+        val overFraction = (overConsumed.toFloat() / target).coerceIn(0f, 1f)
+        val overPercent = ((overConsumed.toFloat() / target) * 100).toInt()
+        val overRemaining = (target - overConsumed).coerceAtLeast(0)
+        assertEquals(1.0f, overFraction, 0.001f)
+        assertEquals(130, overPercent)
+        assertEquals(0, overRemaining)
+    }
+
+    @Test
+    fun testWidgetVolumeFormatting() {
+        val formatMl = com.example.widgets.WidgetDataHelper.formatVolume(1500, "ml")
+        val formatLitres = com.example.widgets.WidgetDataHelper.formatVolume(2500, "litres")
+
+        assertEquals("1,500 ml", formatMl)
+        assertEquals("2.50 L", formatLitres)
+    }
+
+    @Test
+    fun testWidgetQuickAddOptionsComposition() {
+        fun buildQuickAddOptions(customAmount: Int): List<Int> {
+            return buildList {
+                add(customAmount)
+                listOf(150, 300, 500).forEach { fixed ->
+                    if (!contains(fixed)) {
+                        add(fixed)
+                    }
+                }
+            }.take(4)
+        }
+
+        // Default 300 -> [300, 150, 500]
+        val defaultOptions = buildQuickAddOptions(300)
+        assertEquals(listOf(300, 150, 500), defaultOptions)
+
+        // Custom 350 -> [350, 150, 300, 500]
+        val custom350Options = buildQuickAddOptions(350)
+        assertEquals(listOf(350, 150, 300, 500), custom350Options)
+
+        // Custom 150 -> [150, 300, 500]
+        val custom150Options = buildQuickAddOptions(150)
+        assertEquals(listOf(150, 300, 500), custom150Options)
+    }
 }
 

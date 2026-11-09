@@ -38,16 +38,18 @@ class MainActivity : ComponentActivity() {
         val preferencesDataStore = UserPreferencesDataStore(applicationContext)
         val repository = WaterRepository(
             waterEntryDao = database.waterEntryDao(),
-            preferencesDataStore = preferencesDataStore
+            preferencesDataStore = preferencesDataStore,
+            context = applicationContext
         )
 
-        // Ensure reminders are registered in WorkManager if user has enabled them
+        // Ensure reminders are registered in WorkManager and widgets refreshed
         lifecycleScope.launch {
             val enabled = preferencesDataStore.remindersEnabled.first()
             if (enabled) {
                 val interval = preferencesDataStore.reminderIntervalMinutes.first()
                 ReminderScheduler.scheduleReminders(applicationContext, interval)
             }
+            com.example.widgets.WidgetRefreshHelper.refreshAllWidgets(applicationContext)
         }
 
         setContent {

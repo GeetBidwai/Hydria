@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -102,6 +105,7 @@ fun SettingsScreen(
     val reminderWeekendsEnabled by repository.reminderWeekendsEnabled.collectAsState(initial = true)
     val wakeTime by repository.wakeTime.collectAsState(initial = "08:00")
     val sleepTime by repository.sleepTime.collectAsState(initial = "22:00")
+    val widgetQuickAddMl by repository.widgetQuickAddMl.collectAsState(initial = 300)
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showUnitDialog by remember { mutableStateOf(false) }
@@ -109,6 +113,7 @@ fun SettingsScreen(
     var showIntervalDialog by remember { mutableStateOf(false) }
     var showWakingHoursDialog by remember { mutableStateOf(false) }
     var showPermissionRationaleDialog by remember { mutableStateOf(false) }
+    var showWidgetQuickAddDialog by remember { mutableStateOf(false) }
     var hasPromptedNotificationPermission by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -192,6 +197,21 @@ fun SettingsScreen(
                     subtitle = personalSubtitle,
                     onClick = { showEditProfileDialog = true },
                     testTag = "settings_info_row"
+                )
+            }
+        }
+
+        // Home Screen Widget Section
+        item {
+            WaterCard(testTag = "settings_widget_card") {
+                SectionHeader("HOME SCREEN WIDGET")
+
+                SettingsActionRow(
+                    icon = Icons.Default.Widgets,
+                    title = "Default Quick Add Amount",
+                    subtitle = "$widgetQuickAddMl ml per tap (2×1 and 4×2 widgets)",
+                    onClick = { showWidgetQuickAddDialog = true },
+                    testTag = "settings_widget_quick_add_row"
                 )
             }
         }
@@ -853,6 +873,166 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showPermissionRationaleDialog = false }) {
                     Text("Not Now", color = WaterTextSecondary)
+                }
+            },
+            containerColor = WaterSurface
+        )
+    }
+
+    // Widget Quick Add Amount Configuration Dialog
+    if (showWidgetQuickAddDialog) {
+        val presets = listOf(150, 200, 250, 300, 350, 400, 500, 750)
+        var isCustomSelected by remember { mutableStateOf(!presets.contains(widgetQuickAddMl)) }
+        var selectedPreset by remember { mutableStateOf(if (presets.contains(widgetQuickAddMl)) widgetQuickAddMl else 300) }
+        var customInput by remember { mutableStateOf(if (!presets.contains(widgetQuickAddMl)) widgetQuickAddMl.toString() else "") }
+        var errorMsg by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { showWidgetQuickAddDialog = false },
+            title = {
+                Text(
+                    text = "Default Quick Add Amount",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Choose the primary amount logged with one tap on home screen widgets:",
+                        style = MaterialTheme.typography.bodySmall.copy(color = WaterTextSecondary),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+
+                    presets.forEach { preset ->
+                        val isSelected = !isCustomSelected && selectedPreset == preset
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    isCustomSelected = false
+                                    selectedPreset = preset
+                                    errorMsg = null
+                                }
+                                .padding(vertical = 4.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = {
+                                    isCustomSelected = false
+                                    selectedPreset = preset
+                                    errorMsg = null
+                                },
+                                colors = RadioButtonDefaults.colors(selectedColor = WaterPrimary)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "$preset ml" + if (preset == 300) " (Default)" else "",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) WaterPrimary else WaterTextPrimary
+                                )
+                            )
+                        }
+                    }
+
+                    // Custom Option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                isCustomSelected = true
+                                errorMsg = null
+                            }
+                            .padding(vertical = 4.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isCustomSelected,
+                            onClick = {
+                                isCustomSelected = true
+                                errorMsg = null
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = WaterPrimary)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Custom Amount",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCustomSelected) WaterPrimary else WaterTextPrimary
+                            )
+                        )
+                    }
+
+                    if (isCustomSelected) {
+                        OutlinedTextField(
+                            value = customInput,
+                            onValueChange = { input ->
+                                customInput = input.filter { it.isDigit() }.take(4)
+                                errorMsg = null
+                            },
+                            label = { Text("Custom Amount (ml)") },
+                            placeholder = { Text("e.g. 350") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = textFieldColors(),
+                            isError = errorMsg != null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        )
+
+                        if (errorMsg != null) {
+                            Text(
+                                text = errorMsg ?: "",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 2.dp, start = 4.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val finalAmount = if (isCustomSelected) {
+                            val parsed = customInput.toIntOrNull()
+                            when {
+                                parsed == null || parsed <= 0 -> {
+                                    errorMsg = "Enter a valid positive number"
+                                    return@TextButton
+                                }
+                                parsed < 50 || parsed > 3000 -> {
+                                    errorMsg = "Amount must be between 50 and 3,000 ml"
+                                    return@TextButton
+                                }
+                                else -> parsed
+                            }
+                        } else {
+                            selectedPreset
+                        }
+
+                        coroutineScope.launch {
+                            repository.setWidgetQuickAddMl(finalAmount)
+                            showWidgetQuickAddDialog = false
+                            Toast.makeText(context, "Widget quick-add set to $finalAmount ml", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("Save", color = WaterPrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWidgetQuickAddDialog = false }) {
+                    Text("Cancel", color = WaterTextSecondary)
                 }
             },
             containerColor = WaterSurface

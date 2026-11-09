@@ -18,3 +18,9 @@
 
 # Preserve line numbers for stack traces
 -keepattributes SourceFile,LineNumberTable
+
+# Jetpack Glance ActionCallback
+-keep class * implements androidx.glance.appwidget.action.ActionCallback {
+    public <init>();
+}
+

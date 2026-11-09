@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="100dp"
+    android:viewportWidth="200"
+    android:viewportHeight="100">
+
+    <!-- Background card -->
+    <path
+        android:fillColor="#F7F8F6"
+        android:pathData="M 12,0 L 188,0 A 12,12 0 0,1 200,12 L 200,88 A 12,12 0 0,1 188,100 L 12,100 A 12,12 0 0,1 0,88 L 0,12 A 12,12 0 0,1 12,0 Z" />
+
+    <!-- Inner White Surface -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 18,6 L 182,6 A 10,10 0 0,1 192,16 L 192,84 A 10,10 0 0,1 182,94 L 18,94 A 10,10 0 0,1 8,84 L 8,16 A 10,10 0 0,1 18,6 Z" />
+
+    <!-- Water Drop Icon -->
+    <path
+        android:fillColor="#4A90A4"
+        android:pathData="M 22,25 C 22,25 28,15 28,15 C 28,15 34,25 34,25 C 34,28.3 31.3,31 28,31 C 24.7,31 22,28.3 22,25 Z" />
+
+    <!-- Intake Bar placeholder -->
+    <path
+        android:fillColor="#202B30"
+        android:pathData="M 22,42 L 80,42 A 4,4 0 0,1 84,46 L 84,48 A 4,4 0 0,1 80,52 L 22,52 A 4,4 0 0,1 18,48 L 18,46 A 4,4 0 0,1 22,42 Z" />
+
+    <!-- Target sub-bar -->
+    <path
+        android:fillColor="#5F6E75"
+        android:pathData="M 22,60 L 65,60 A 3,3 0 0,1 68,63 L 68,63 A 3,3 0 0,1 65,66 L 22,66 A 3,3 0 0,1 19,63 L 19,63 A 3,3 0 0,1 22,60 Z" />
+
+    <!-- Progress line track -->
+    <path
+        android:fillColor="#E3EDF0"
+        android:pathData="M 20,76 L 120,76 A 2,2 0 0,1 122,78 L 122,78 A 2,2 0 0,1 120,80 L 20,80 A 2,2 0 0,1 18,78 L 18,78 A 2,2 0 0,1 20,76 Z" />
+
+    <!-- Progress line active -->
+    <path
+        android:fillColor="#4A90A4"
+        android:pathData="M 20,76 L 70,76 A 2,2 0 0,1 72,78 L 72,78 A 2,2 0 0,1 70,80 L 20,80 A 2,2 0 0,1 18,78 L 18,78 A 2,2 0 0,1 20,76 Z" />
+
+    <!-- Quick Add Button Box -->
+    <path
+        android:fillColor="#4A90A4"
+        android:pathData="M 138,30 L 178,30 A 8,8 0 0,1 186,38 L 186,62 A 8,8 0 0,1 178,70 L 138,70 A 8,8 0 0,1 130,62 L 130,38 A 8,8 0 0,1 138,30 Z" />
+</vector>

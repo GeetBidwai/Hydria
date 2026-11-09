@@ -12,6 +12,10 @@ object AppConstants {
     // Quick-add quantities in ml
     val QUICK_ADD_AMOUNTS = listOf(150, 250, 500, 750)
     
+    // Widget constants
+    const val DEFAULT_WIDGET_QUICK_ADD_ML = 300
+    val WIDGET_PRESET_AMOUNTS = listOf(150, 200, 250, 300, 350, 400, 500, 750)
+
     // WorkManager tag
     const val REMINDER_WORK_TAG = "water_intake_reminder_work"
 }

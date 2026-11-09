@@ -39,6 +39,7 @@ class UserPreferencesDataStore(private val context: Context) {
         val KEY_REMINDER_INTERVAL_HOURS = intPreferencesKey("reminder_interval_hours")
         val KEY_REMINDER_INTERVAL_MINUTES = intPreferencesKey("reminder_interval_minutes")
         val KEY_REMINDER_WEEKENDS_ENABLED = booleanPreferencesKey("reminder_weekends_enabled")
+        val KEY_WIDGET_QUICK_ADD_ML = intPreferencesKey("widget_quick_add_ml")
     }
 
     val isOnboardingCompleted: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -71,6 +72,10 @@ class UserPreferencesDataStore(private val context: Context) {
 
     val sleepTime: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_SLEEP_TIME] ?: "22:00"
+    }
+
+    val widgetQuickAddMl: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[KEY_WIDGET_QUICK_ADD_ML] ?: AppConstants.DEFAULT_WIDGET_QUICK_ADD_ML
     }
 
     val userProfile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
@@ -143,6 +148,12 @@ class UserPreferencesDataStore(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[KEY_WAKE_TIME] = wakeTime
             prefs[KEY_SLEEP_TIME] = sleepTime
+        }
+    }
+
+    suspend fun setWidgetQuickAddMl(amountMl: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_WIDGET_QUICK_ADD_ML] = amountMl
         }
     }
 

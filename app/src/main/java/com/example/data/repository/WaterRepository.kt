@@ -1,15 +1,18 @@
 package com.example.data.repository
 
+import android.content.Context
 import com.example.data.local.DateTotal
 import com.example.data.local.WaterEntry
 import com.example.data.local.WaterEntryDao
 import com.example.data.preferences.UserPreferencesDataStore
 import com.example.domain.model.UserProfile
+import com.example.widgets.WidgetRefreshHelper
 import kotlinx.coroutines.flow.Flow
 
 class WaterRepository(
     private val waterEntryDao: WaterEntryDao,
-    private val preferencesDataStore: UserPreferencesDataStore
+    private val preferencesDataStore: UserPreferencesDataStore,
+    private val context: Context? = null
 ) {
     fun getEntriesForDate(dateKey: String): Flow<List<WaterEntry>> =
         waterEntryDao.getEntriesByDate(dateKey)
@@ -41,33 +44,47 @@ class WaterRepository(
 
     val sleepTime: Flow<String> = preferencesDataStore.sleepTime
 
+    val widgetQuickAddMl: Flow<Int> = preferencesDataStore.widgetQuickAddMl
+
+    private suspend fun triggerWidgetRefresh() {
+        context?.let { WidgetRefreshHelper.refreshAllWidgets(it) }
+    }
+
     suspend fun logWater(amountMl: Int, dateKey: String): Long {
         val entry = WaterEntry(
             amountMl = amountMl,
             timestamp = System.currentTimeMillis(),
             dateKey = dateKey
         )
-        return waterEntryDao.insertEntry(entry)
+        val id = waterEntryDao.insertEntry(entry)
+        triggerWidgetRefresh()
+        return id
     }
 
     suspend fun insertEntry(entry: WaterEntry): Long {
-        return waterEntryDao.insertEntry(entry)
+        val id = waterEntryDao.insertEntry(entry)
+        triggerWidgetRefresh()
+        return id
     }
 
     suspend fun deleteEntry(id: Long) {
         waterEntryDao.deleteEntryById(id)
+        triggerWidgetRefresh()
     }
 
     suspend fun saveProfile(profile: UserProfile, calculatedTargetMl: Int? = null) {
         preferencesDataStore.saveProfile(profile, calculatedTargetMl)
+        triggerWidgetRefresh()
     }
 
     suspend fun setDailyTargetMl(targetMl: Int) {
         preferencesDataStore.setDailyTargetMl(targetMl)
+        triggerWidgetRefresh()
     }
 
     suspend fun setPreferredUnit(unit: String) {
         preferencesDataStore.setPreferredUnit(unit)
+        triggerWidgetRefresh()
     }
 
     suspend fun setRemindersEnabled(enabled: Boolean) {
@@ -86,6 +103,11 @@ class WaterRepository(
         preferencesDataStore.setWakingHours(wakeTime, sleepTime)
     }
 
+    suspend fun setWidgetQuickAddMl(amountMl: Int) {
+        preferencesDataStore.setWidgetQuickAddMl(amountMl)
+        triggerWidgetRefresh()
+    }
+
     suspend fun setOnboardingCompleted(completed: Boolean) {
         preferencesDataStore.setOnboardingCompleted(completed)
     }
@@ -93,14 +115,17 @@ class WaterRepository(
     suspend fun resetProfileData() {
         // Clear profile preferences without clearing historical water logs
         preferencesDataStore.clearProfileOnly()
+        triggerWidgetRefresh()
     }
 
     suspend fun clearHistory() {
         waterEntryDao.clearAll()
+        triggerWidgetRefresh()
     }
 
     suspend fun clearAllData() {
         waterEntryDao.clearAll()
         preferencesDataStore.clearAll()
+        triggerWidgetRefresh()
     }
 }
