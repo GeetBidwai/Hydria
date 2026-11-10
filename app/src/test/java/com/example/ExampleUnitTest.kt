@@ -445,5 +445,435 @@ class ExampleUnitTest {
         assertTrue(compactWidgetName.startsWith("Hydria"))
         assertTrue(expandedWidgetName.startsWith("Hydria"))
     }
+
+    @Test
+    fun testOceanLegendsMonthlyThresholds() {
+        // Badges 1..9 are at 3, 6, 9, 12, 15, 18, 21, 24, 27
+        for (i in 0 until 9) {
+            val expectedDays = (i + 1) * 3
+            assertEquals(expectedDays, com.example.domain.gamification.Designation.getBadgeThreshold(i, 30))
+        }
+        // 10th badge on final day
+        assertEquals(30, com.example.domain.gamification.Designation.getBadgeThreshold(9, 30))
+        assertEquals(31, com.example.domain.gamification.Designation.getBadgeThreshold(9, 31))
+        assertEquals(28, com.example.domain.gamification.Designation.getBadgeThreshold(9, 28))
+        assertEquals(29, com.example.domain.gamification.Designation.getBadgeThreshold(9, 29))
+    }
+
+    @Test
+    fun testOceanDisastersProgressionOrder() {
+        val expectedTitles = listOf(
+            "Aquatic Intern",
+            "Confused Octopus",
+            "Dry Fish",
+            "Landlocked Crab",
+            "Fish Outta Water",
+            "Desert Sponge",
+            "SpongeBob's Nemesis",
+            "Thirsty Squidward",
+            "The Deep",
+            "The Sahara Survivor"
+        )
+        val actualTitles = com.example.domain.gamification.Designation.OCEAN_DISASTERS.map { it.title }
+        assertEquals(expectedTitles, actualTitles)
+    }
+
+    @Test
+    fun testMonthlyBadgesProgressionAt3to27Days() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        // Build 12 consecutive days in November 2026
+        for (day in 1..12) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-11-%02d", day)] = 2500
+        }
+        // Evaluate on Nov 12 with today goal met
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-12",
+            todayConsumedMl = 2500
+        )
+
+        // 12 days in November unlocks: Triton (3), Varuna (6), Aquaman (9), Neptune (12)
+        assertEquals(12, state.monthlyStreak)
+        assertEquals(12, state.overallStreak)
+        assertEquals(4, state.currentMonthBadgeCount)
+        assertEquals(listOf("triton", "varuna", "aquaman", "neptune"), state.currentMonthUnlockedBadgeIds)
+        assertEquals("Neptune", state.currentDesignationTitle)
+    }
+
+    @Test
+    fun testTenthBadgeOnFinalDayOfMonth30Days() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        // Complete all 30 days in November
+        for (day in 1..30) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-11-%02d", day)] = 2500
+        }
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-30",
+            todayConsumedMl = 2500
+        )
+
+        assertEquals(30, state.monthlyStreak)
+        assertEquals(10, state.currentMonthBadgeCount)
+        assertTrue(state.isCurrentMonthCompleted)
+        assertTrue(state.currentMonthUnlockedBadgeIds.contains("lord_of_seven_seas"))
+        assertEquals("Ocean Explorer", state.currentDesignationTitle)
+    }
+
+    @Test
+    fun testFebruaryWith28Days() {
+        // Non-leap year: 2025 February has 28 days
+        val dailyTotals = mutableMapOf<String, Int>()
+        for (day in 1..28) {
+            dailyTotals[String.format(java.util.Locale.US, "2025-02-%02d", day)] = 2500
+        }
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2025-02-28",
+            todayConsumedMl = 2500
+        )
+
+        assertEquals(28, state.daysInCurrentMonth)
+        assertEquals(28, state.monthlyStreak)
+        assertEquals(10, state.currentMonthBadgeCount)
+        assertTrue(state.isCurrentMonthCompleted)
+        assertTrue(state.currentMonthUnlockedBadgeIds.contains("lord_of_seven_seas"))
+    }
+
+    @Test
+    fun testLeapYearFebruaryWith29Days() {
+        // Leap year: 2024 February has 29 days
+        val dailyTotals = mutableMapOf<String, Int>()
+        for (day in 1..29) {
+            dailyTotals[String.format(java.util.Locale.US, "2024-02-%02d", day)] = 2500
+        }
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2024-02-29",
+            todayConsumedMl = 2500
+        )
+
+        assertEquals(29, state.daysInCurrentMonth)
+        assertEquals(29, state.monthlyStreak)
+        assertEquals(10, state.currentMonthBadgeCount)
+        assertTrue(state.isCurrentMonthCompleted)
+        assertTrue(state.currentMonthUnlockedBadgeIds.contains("lord_of_seven_seas"))
+    }
+
+    @Test
+    fun testOverallStreakContinuityAcrossMonthBoundaries() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        // End of October (Oct 28..31) = 4 days
+        dailyTotals["2026-10-28"] = 2500
+        dailyTotals["2026-10-29"] = 2500
+        dailyTotals["2026-10-30"] = 2500
+        dailyTotals["2026-10-31"] = 2500
+        // Day 1 of November = Nov 1
+        dailyTotals["2026-11-01"] = 2500
+
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-01",
+            todayConsumedMl = 2500
+        )
+
+        // Overall streak continues unbroken (4 + 1 = 5)
+        assertEquals(5, state.overallStreak)
+        // Monthly streak for November starts at 1
+        assertEquals(1, state.monthlyStreak)
+        assertEquals(0, state.currentMonthBadgeCount)
+    }
+
+    @Test
+    fun testMonthlyStreakResetAfterMissedDayPreservesBadges() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        // Days 1..7 met target in November
+        for (day in 1..7) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-11-%02d", day)] = 2500
+        }
+        // Day 8 was missed (0 ml)
+        dailyTotals["2026-11-08"] = 0
+        // Day 9 user drinks 2500 ml
+        dailyTotals["2026-11-09"] = 2500
+
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-09",
+            todayConsumedMl = 2500
+        )
+
+        // Monthly streak reset on day 8, restarted on day 9
+        assertEquals(1, state.monthlyStreak)
+        assertEquals(1, state.overallStreak)
+        // Highest streak was 7
+        assertEquals(7, state.monthlyHighestStreak)
+        // Badges earned during days 1..7 (Triton at 3, Varuna at 6) remain permanently unlocked in this month!
+        assertEquals(2, state.currentMonthBadgeCount)
+        assertTrue(state.currentMonthUnlockedBadgeIds.contains("triton"))
+        assertTrue(state.currentMonthUnlockedBadgeIds.contains("varuna"))
+    }
+
+    @Test
+    fun testOceanDisastersAndRecovery() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        // Missed yesterday and day before
+        dailyTotals["2026-11-07"] = 0
+        dailyTotals["2026-11-08"] = 0
+        // Today Nov 9 before drinking
+        val disasterState = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-09",
+            todayConsumedMl = 0
+        )
+
+        assertEquals(2, disasterState.currentMissedStreak)
+        assertTrue(disasterState.isDisasterPath)
+        assertEquals("Confused Octopus", disasterState.currentDesignationTitle)
+
+        // User hydrates and reaches 100% today
+        val recoveredState = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-09",
+            todayConsumedMl = 2500
+        )
+
+        assertEquals(0, recoveredState.currentMissedStreak)
+        assertFalse(recoveredState.isDisasterPath)
+        assertEquals(1, recoveredState.overallStreak)
+        assertEquals(1, recoveredState.monthlyStreak)
+    }
+
+    @Test
+    fun testMonthlyDesignationProgressionAcrossCollections() {
+        val titles = com.example.domain.gamification.Designation.MONTHLY_DESIGNATION_TITLES
+        assertEquals(12, titles.size)
+        assertEquals("Ocean Explorer", com.example.domain.gamification.Designation.getMonthlyDesignation(1))
+        assertEquals("Sea Guardian", com.example.domain.gamification.Designation.getMonthlyDesignation(2))
+        assertEquals("Keeper of the Seven Seas", com.example.domain.gamification.Designation.getMonthlyDesignation(12))
+        // Beyond 12: Prestige
+        assertEquals("Keeper of the Seven Seas (Prestige 1)", com.example.domain.gamification.Designation.getMonthlyDesignation(13))
+        assertEquals("Keeper of the Seven Seas (Prestige 2)", com.example.domain.gamification.Designation.getMonthlyDesignation(14))
+    }
+
+    @Test
+    fun testMonthlyCollectionRecordSerialization() {
+        val record = com.example.domain.gamification.MonthlyCollectionRecord(
+            monthKey = "2026-10",
+            year = 2026,
+            month = 10,
+            unlockedBadgeIds = listOf("triton", "varuna", "aquaman"),
+            highestStreak = 10,
+            isCompleted = false,
+            designationAwarded = null
+        )
+        val jsonStr = com.example.domain.gamification.MonthlyCollectionRecord.listToJsonString(listOf(record))
+        val restored = com.example.domain.gamification.MonthlyCollectionRecord.listFromJsonString(jsonStr)
+
+        assertEquals(1, restored.size)
+        assertEquals("2026-10", restored.first().monthKey)
+        assertEquals(listOf("triton", "varuna", "aquaman"), restored.first().unlockedBadgeIds)
+        assertEquals(10, restored.first().highestStreak)
+    }
+
+    @Test
+    fun testUsersWhoMissMultipleDaysWithoutOpeningApp() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        // User logged on Nov 1, then didn't open app until Nov 6
+        dailyTotals["2026-11-01"] = 2500
+        // Days 2, 3, 4, 5 have no logs
+
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-06",
+            todayConsumedMl = 0
+        )
+
+        // 4 past consecutive missed days (Nov 2, 3, 4, 5)
+        assertEquals(4, state.currentMissedStreak)
+        assertTrue(state.isDisasterPath)
+        assertEquals("Dry Fish", state.currentDesignationTitle) // 3+ days missed threshold
+    }
+
+    @Test
+    fun testFirstCompletedMonthReceivesOceanExplorer() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        // Complete all 30 days in September 2026
+        for (d in 1..30) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-09-%02d", d)] = 2500
+        }
+
+        // Evaluate on Oct 1
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-10-01",
+            todayConsumedMl = 0
+        )
+
+        assertEquals(1, state.completedMonthlyCollectionsCount)
+        val septRecord = state.completedMonthlyCollections.find { it.monthKey == "2026-09" }
+        org.junit.Assert.assertNotNull(septRecord)
+        assertTrue(septRecord!!.isCompleted)
+        assertEquals("Ocean Explorer", septRecord.designationAwarded)
+    }
+
+    @Test
+    fun testSecondCompletedMonthReceivesSeaGuardian() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        // September (30 days)
+        for (d in 1..30) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-09-%02d", d)] = 2500
+        }
+        // October (31 days)
+        for (d in 1..31) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-10-%02d", d)] = 2500
+        }
+
+        // Evaluate on Nov 1
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-01",
+            todayConsumedMl = 0
+        )
+
+        assertEquals(2, state.completedMonthlyCollectionsCount)
+        val septRecord = state.completedMonthlyCollections.find { it.monthKey == "2026-09" }
+        val octRecord = state.completedMonthlyCollections.find { it.monthKey == "2026-10" }
+
+        org.junit.Assert.assertNotNull(septRecord)
+        org.junit.Assert.assertNotNull(octRecord)
+        assertEquals("Ocean Explorer", septRecord!!.designationAwarded)
+        assertEquals("Sea Guardian", octRecord!!.designationAwarded)
+        assertEquals("Sea Guardian", state.activeMonthlyDesignation)
+    }
+
+    @Test
+    fun testTwoConsecutiveCompletedMonthsReceiveSequentialTitles() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        for (d in 1..30) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-09-%02d", d)] = 2500
+        }
+        for (d in 1..31) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-10-%02d", d)] = 2500
+        }
+
+        val state = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-01",
+            todayConsumedMl = 2500 // Completes Day 1 of Nov
+        )
+
+        val completed = state.completedMonthlyCollections.filter { it.isCompleted }
+        assertEquals(2, completed.size)
+        assertEquals("Ocean Explorer", completed[0].designationAwarded)
+        assertEquals("Sea Guardian", completed[1].designationAwarded)
+    }
+
+    @Test
+    fun testReevaluatingPersistedCollectionsDoesNotDuplicateOrAdvanceTitles() {
+        val dailyTotals = mutableMapOf<String, Int>()
+        for (d in 1..30) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-09-%02d", d)] = 2500
+        }
+        for (d in 1..31) {
+            dailyTotals[String.format(java.util.Locale.US, "2026-10-%02d", d)] = 2500
+        }
+
+        // First pass: evaluate and get persisted collections
+        val firstPass = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-01",
+            todayConsumedMl = 0
+        )
+
+        // Pass 2: Re-evaluating with persistedCollections provided (simulating app restart)
+        val secondPass = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-01",
+            todayConsumedMl = 0,
+            persistedCollections = firstPass.completedMonthlyCollections,
+            persistedHighestDesignation = firstPass.lifetimeHighestDesignation
+        )
+
+        assertEquals(2, secondPass.completedMonthlyCollectionsCount)
+        val septRecord = secondPass.completedMonthlyCollections.find { it.monthKey == "2026-09" }
+        val octRecord = secondPass.completedMonthlyCollections.find { it.monthKey == "2026-10" }
+
+        org.junit.Assert.assertNotNull(septRecord)
+        org.junit.Assert.assertNotNull(octRecord)
+        // Must NOT have advanced to Sea Guardian and Poseidon's Champion!
+        assertEquals("Ocean Explorer", septRecord!!.designationAwarded)
+        assertEquals("Sea Guardian", octRecord!!.designationAwarded)
+        assertEquals(firstPass.completedMonthlyCollections, secondPass.completedMonthlyCollections)
+    }
+
+    @Test
+    fun testRepeatedDataStoreEmissionsDoNotCauseInfinitePersistenceLoop() {
+        val dailyTotals = mapOf(
+            "2026-11-01" to 2500,
+            "2026-11-02" to 2500
+        )
+
+        val state1 = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-02",
+            todayConsumedMl = 2500
+        )
+
+        val state2 = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = dailyTotals,
+            dailyTargetMl = 2500,
+            todayDateKey = "2026-11-02",
+            todayConsumedMl = 2500,
+            persistedCollections = state1.completedMonthlyCollections,
+            persistedHighestDesignation = state1.lifetimeHighestDesignation
+        )
+
+        // States must be exactly equal; distinctUntilChanged suppresses redundant emissions
+        assertEquals(state1, state2)
+    }
+
+    @Test
+    fun testUnchangedStateDoesNotTriggerUnnecessaryWrites() {
+        val record = com.example.domain.gamification.MonthlyCollectionRecord(
+            monthKey = "2026-09",
+            year = 2026,
+            month = 9,
+            unlockedBadgeIds = com.example.domain.gamification.Designation.OCEAN_LEGENDS.map { it.id },
+            highestStreak = 30,
+            isCompleted = true,
+            designationAwarded = "Ocean Explorer"
+        )
+        val stateA = com.example.domain.gamification.GamificationState(
+            overallStreak = 5,
+            currentMissedStreak = 0,
+            monthlyStreak = 5,
+            completedMonthlyCollections = listOf(record)
+        )
+        val stateB = com.example.domain.gamification.GamificationState(
+            overallStreak = 5,
+            currentMissedStreak = 0,
+            monthlyStreak = 5,
+            completedMonthlyCollections = listOf(record)
+        )
+
+        assertEquals(stateA, stateB)
+        // Verifies data class structural equality ensures distinctUntilChanged() filters identical instances
+        assertTrue(stateA == stateB)
+    }
 }
 

@@ -1,19 +1,26 @@
 package com.example.data.repository
 
 import android.content.Context
+import com.example.core.utils.DateTimeUtils
 import com.example.data.local.DateTotal
 import com.example.data.local.WaterEntry
 import com.example.data.local.WaterEntryDao
 import com.example.data.preferences.UserPreferencesDataStore
+import com.example.domain.gamification.GamificationEngine
+import com.example.domain.gamification.GamificationState
 import com.example.domain.model.UserProfile
 import com.example.widgets.WidgetRefreshHelper
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onEach
 
 class WaterRepository(
     private val waterEntryDao: WaterEntryDao,
     private val preferencesDataStore: UserPreferencesDataStore,
     private val context: Context? = null
 ) {
+    private var lastPersistedSnapshot: GamificationState? = null
     fun getEntriesForDate(dateKey: String): Flow<List<WaterEntry>> =
         waterEntryDao.getEntriesByDate(dateKey)
 
@@ -45,6 +52,33 @@ class WaterRepository(
     val sleepTime: Flow<String> = preferencesDataStore.sleepTime
 
     val widgetQuickAddMl: Flow<Int> = preferencesDataStore.widgetQuickAddMl
+
+    val gamificationState: Flow<GamificationState> = combine(
+        getDailyTotals(),
+        dailyTargetMl,
+        preferencesDataStore.gamificationHighestDesignation,
+        preferencesDataStore.gamificationMonthlyCollections
+    ) { totals, target, highestDesignation, collections ->
+        val totalsMap = totals.associate { it.dateKey to it.totalMl }
+        val todayKey = DateTimeUtils.getTodayDateKey()
+        val todayConsumed = totalsMap[todayKey] ?: 0
+
+        GamificationEngine.evaluate(
+            dailyTotals = totalsMap,
+            dailyTargetMl = target,
+            todayDateKey = todayKey,
+            todayConsumedMl = todayConsumed,
+            persistedCollections = collections,
+            persistedHighestDesignation = highestDesignation
+        )
+    }.distinctUntilChanged().onEach { evaluated ->
+        if (evaluated != lastPersistedSnapshot) {
+            lastPersistedSnapshot = evaluated
+            try {
+                preferencesDataStore.saveGamificationV2Snapshot(evaluated)
+            } catch (_: Exception) {}
+        }
+    }
 
     private suspend fun triggerWidgetRefresh() {
         context?.let { WidgetRefreshHelper.refreshAllWidgets(it) }

@@ -63,6 +63,7 @@ import com.example.core.ui.components.WaterCard
 import com.example.core.ui.components.WaterCircularProgress
 import com.example.core.utils.DateTimeUtils
 import com.example.data.local.WaterEntry
+import com.example.presentation.dashboard.components.DesignationCard
 import com.example.ui.theme.WaterAccentSuccess
 import com.example.ui.theme.WaterBackground
 import com.example.ui.theme.WaterOutline
@@ -212,6 +213,14 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+
+            // Hydration Designation & Streak Card
+            item {
+                DesignationCard(
+                    state = uiState.gamificationState,
+                    isTodayGoalAchieved = uiState.isGoalAchieved
+                )
             }
 
             // Quick Add Section

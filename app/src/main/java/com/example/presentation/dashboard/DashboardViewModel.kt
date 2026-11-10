@@ -32,7 +32,8 @@ data class DashboardUiState(
     val customAmountError: String? = null,
     val lastDeletedEntry: WaterEntry? = null,
     val showUndoSnackbar: Boolean = false,
-    val snackbarMessage: String? = null
+    val snackbarMessage: String? = null,
+    val gamificationState: com.example.domain.gamification.GamificationState = com.example.domain.gamification.GamificationState()
 )
 
 class DashboardViewModel(
@@ -90,8 +91,9 @@ class DashboardViewModel(
     val uiState: StateFlow<DashboardUiState> = combine(
         preferencesFlow,
         todayIntakeFlow,
+        repository.gamificationState,
         _dialogState
-    ) { prefs, intake, dialogState ->
+    ) { prefs, intake, gamification, dialogState ->
         val safeTarget = if (prefs.targetMl > 0) prefs.targetMl else 2500
         val remaining = (safeTarget - intake.consumedMl).coerceAtLeast(0)
         val percentage = ((intake.consumedMl.toFloat() / safeTarget.toFloat()) * 100).toInt()
@@ -113,7 +115,8 @@ class DashboardViewModel(
             customAmountError = dialogState.customAmountError,
             lastDeletedEntry = dialogState.lastDeletedEntry,
             showUndoSnackbar = dialogState.showUndoSnackbar,
-            snackbarMessage = dialogState.snackbarMessage
+            snackbarMessage = dialogState.snackbarMessage,
+            gamificationState = gamification
         )
     }.stateIn(
         scope = viewModelScope,

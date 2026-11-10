@@ -10,10 +10,13 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.core.constants.AppConstants
+import com.example.domain.gamification.GamificationState
+import com.example.domain.gamification.MonthlyCollectionRecord
 import com.example.domain.model.ActivityLevel
 import com.example.domain.model.Climate
 import com.example.domain.model.UserProfile
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = AppConstants.PREFERENCES_NAME)
@@ -40,6 +43,21 @@ class UserPreferencesDataStore(private val context: Context) {
         val KEY_REMINDER_INTERVAL_MINUTES = intPreferencesKey("reminder_interval_minutes")
         val KEY_REMINDER_WEEKENDS_ENABLED = booleanPreferencesKey("reminder_weekends_enabled")
         val KEY_WIDGET_QUICK_ADD_ML = intPreferencesKey("widget_quick_add_ml")
+
+        // Gamification preferences
+        val KEY_GAMIFICATION_CURRENT_STREAK = intPreferencesKey("gamification_current_streak")
+        val KEY_GAMIFICATION_OVERALL_STREAK = intPreferencesKey("gamification_overall_streak")
+        val KEY_GAMIFICATION_MISSED_STREAK = intPreferencesKey("gamification_missed_streak")
+        val KEY_GAMIFICATION_MONTHLY_STREAK = intPreferencesKey("gamification_monthly_streak")
+        val KEY_GAMIFICATION_MONTHLY_HIGHEST_STREAK = intPreferencesKey("gamification_monthly_highest_streak")
+        val KEY_GAMIFICATION_TOTAL_SUCCESS_DAYS = intPreferencesKey("gamification_total_success_days")
+        val KEY_GAMIFICATION_CURRENT_DESIGNATION = stringPreferencesKey("gamification_current_designation")
+        val KEY_GAMIFICATION_HIGHEST_DESIGNATION = stringPreferencesKey("gamification_highest_designation")
+        val KEY_GAMIFICATION_LAST_EVAL_DATE = stringPreferencesKey("gamification_last_eval_date")
+        val KEY_GAMIFICATION_UNLOCKED_MILESTONES = stringPreferencesKey("gamification_unlocked_milestones")
+        val KEY_GAMIFICATION_CURRENT_MONTH_KEY = stringPreferencesKey("gamification_current_month_key")
+        val KEY_GAMIFICATION_CURRENT_MONTH_BADGES_JSON = stringPreferencesKey("gamification_current_month_badges_json")
+        val KEY_GAMIFICATION_MONTHLY_COLLECTIONS_JSON = stringPreferencesKey("gamification_monthly_collections_json")
     }
 
     val isOnboardingCompleted: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -160,6 +178,67 @@ class UserPreferencesDataStore(private val context: Context) {
     suspend fun setOnboardingCompleted(completed: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_ONBOARDING_COMPLETED] = completed
+        }
+    }
+
+    val gamificationHighestDesignation: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_GAMIFICATION_HIGHEST_DESIGNATION] ?: "Wave Seeker"
+    }.distinctUntilChanged()
+
+    val gamificationUnlockedMilestoneIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        val raw = prefs[KEY_GAMIFICATION_UNLOCKED_MILESTONES] ?: ""
+        if (raw.isBlank()) emptySet() else raw.split(",").toSet()
+    }.distinctUntilChanged()
+
+    val gamificationMonthlyCollections: Flow<List<MonthlyCollectionRecord>> = context.dataStore.data.map { prefs ->
+        val raw = prefs[KEY_GAMIFICATION_MONTHLY_COLLECTIONS_JSON]
+        MonthlyCollectionRecord.listFromJsonString(raw)
+    }.distinctUntilChanged()
+
+    suspend fun saveGamificationV2Snapshot(state: GamificationState) {
+        context.dataStore.edit { prefs ->
+            val currentJson = prefs[KEY_GAMIFICATION_MONTHLY_COLLECTIONS_JSON] ?: ""
+            val newJson = MonthlyCollectionRecord.listToJsonString(state.completedMonthlyCollections)
+            val currentHighest = prefs[KEY_GAMIFICATION_HIGHEST_DESIGNATION] ?: ""
+            val currentStreak = prefs[KEY_GAMIFICATION_OVERALL_STREAK] ?: 0
+            val currentMissed = prefs[KEY_GAMIFICATION_MISSED_STREAK] ?: 0
+            val currentMonthStreak = prefs[KEY_GAMIFICATION_MONTHLY_STREAK] ?: 0
+            val currentMonthHighest = prefs[KEY_GAMIFICATION_MONTHLY_HIGHEST_STREAK] ?: 0
+            val currentTotalSuccess = prefs[KEY_GAMIFICATION_TOTAL_SUCCESS_DAYS] ?: 0
+            val currentDesig = prefs[KEY_GAMIFICATION_CURRENT_DESIGNATION] ?: ""
+            val currentLastEval = prefs[KEY_GAMIFICATION_LAST_EVAL_DATE] ?: ""
+            val currentMonthKey = prefs[KEY_GAMIFICATION_CURRENT_MONTH_KEY] ?: ""
+            val currentBadges = prefs[KEY_GAMIFICATION_CURRENT_MONTH_BADGES_JSON] ?: ""
+            val newBadges = state.currentMonthUnlockedBadgeIds.joinToString(",")
+
+            // Skip writing if nothing changed to prevent disk writes and redundant DataStore emissions
+            if (currentStreak == state.overallStreak &&
+                currentMissed == state.currentMissedStreak &&
+                currentMonthStreak == state.monthlyStreak &&
+                currentMonthHighest == state.monthlyHighestStreak &&
+                currentTotalSuccess == state.totalSuccessfulDays &&
+                currentDesig == state.currentDesignationTitle &&
+                currentHighest == state.lifetimeHighestDesignation &&
+                currentLastEval == state.lastEvaluatedDateKey &&
+                currentMonthKey == state.currentMonthKey &&
+                currentBadges == newBadges &&
+                currentJson == newJson
+            ) {
+                return@edit
+            }
+
+            prefs[KEY_GAMIFICATION_OVERALL_STREAK] = state.overallStreak
+            prefs[KEY_GAMIFICATION_CURRENT_STREAK] = state.overallStreak
+            prefs[KEY_GAMIFICATION_MISSED_STREAK] = state.currentMissedStreak
+            prefs[KEY_GAMIFICATION_MONTHLY_STREAK] = state.monthlyStreak
+            prefs[KEY_GAMIFICATION_MONTHLY_HIGHEST_STREAK] = state.monthlyHighestStreak
+            prefs[KEY_GAMIFICATION_TOTAL_SUCCESS_DAYS] = state.totalSuccessfulDays
+            prefs[KEY_GAMIFICATION_CURRENT_DESIGNATION] = state.currentDesignationTitle
+            prefs[KEY_GAMIFICATION_HIGHEST_DESIGNATION] = state.lifetimeHighestDesignation
+            prefs[KEY_GAMIFICATION_LAST_EVAL_DATE] = state.lastEvaluatedDateKey
+            prefs[KEY_GAMIFICATION_CURRENT_MONTH_KEY] = state.currentMonthKey
+            prefs[KEY_GAMIFICATION_CURRENT_MONTH_BADGES_JSON] = newBadges
+            prefs[KEY_GAMIFICATION_MONTHLY_COLLECTIONS_JSON] = newJson
         }
     }
 
