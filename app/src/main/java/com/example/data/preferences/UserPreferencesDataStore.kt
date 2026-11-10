@@ -17,6 +17,7 @@ import com.example.domain.model.Climate
 import com.example.domain.model.UserProfile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = AppConstants.PREFERENCES_NAME)
@@ -58,6 +59,14 @@ class UserPreferencesDataStore(private val context: Context) {
         val KEY_GAMIFICATION_CURRENT_MONTH_KEY = stringPreferencesKey("gamification_current_month_key")
         val KEY_GAMIFICATION_CURRENT_MONTH_BADGES_JSON = stringPreferencesKey("gamification_current_month_badges_json")
         val KEY_GAMIFICATION_MONTHLY_COLLECTIONS_JSON = stringPreferencesKey("gamification_monthly_collections_json")
+
+        // Notification tracking preferences
+        val KEY_NOTIF_LAST_PROGRESS_DATE = stringPreferencesKey("notif_last_progress_date")
+        val KEY_NOTIF_TRIGGERED_MILESTONES = stringPreferencesKey("notif_triggered_milestones") // e.g. "25,50"
+        val KEY_NOTIF_LAST_END_OF_DAY_DATE = stringPreferencesKey("notif_last_end_of_day_date")
+        val KEY_NOTIF_LAST_MISSED_GOAL_DATE = stringPreferencesKey("notif_last_missed_goal_date")
+        val KEY_NOTIF_LAST_SHOWN_STREAK_BADGE_ID = stringPreferencesKey("notif_last_shown_streak_badge_id")
+        val KEY_NOTIF_LAST_TITLES = stringPreferencesKey("notif_last_titles")
     }
 
     val isOnboardingCompleted: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -239,6 +248,83 @@ class UserPreferencesDataStore(private val context: Context) {
             prefs[KEY_GAMIFICATION_CURRENT_MONTH_KEY] = state.currentMonthKey
             prefs[KEY_GAMIFICATION_CURRENT_MONTH_BADGES_JSON] = newBadges
             prefs[KEY_GAMIFICATION_MONTHLY_COLLECTIONS_JSON] = newJson
+        }
+    }
+
+    suspend fun getTriggeredMilestonesToday(todayKey: String): Set<Int> {
+        val prefs = context.dataStore.data.first()
+        val date = prefs[KEY_NOTIF_LAST_PROGRESS_DATE] ?: ""
+        if (date != todayKey) return emptySet()
+        val raw = prefs[KEY_NOTIF_TRIGGERED_MILESTONES] ?: ""
+        return if (raw.isBlank()) emptySet() else raw.split(",").mapNotNull { it.toIntOrNull() }.toSet()
+    }
+
+    suspend fun recordMilestonesTriggeredToday(todayKey: String, milestones: Set<Int>) {
+        context.dataStore.edit { prefs ->
+            val existing = if (prefs[KEY_NOTIF_LAST_PROGRESS_DATE] == todayKey) {
+                val raw = prefs[KEY_NOTIF_TRIGGERED_MILESTONES] ?: ""
+                if (raw.isBlank()) emptySet() else raw.split(",").mapNotNull { it.toIntOrNull() }.toSet()
+            } else {
+                emptySet()
+            }
+            val combined = existing + milestones
+            prefs[KEY_NOTIF_LAST_PROGRESS_DATE] = todayKey
+            prefs[KEY_NOTIF_TRIGGERED_MILESTONES] = combined.joinToString(",")
+        }
+    }
+
+    suspend fun isEndOfDayNotifiedToday(todayKey: String): Boolean {
+        val prefs = context.dataStore.data.first()
+        return prefs[KEY_NOTIF_LAST_END_OF_DAY_DATE] == todayKey
+    }
+
+    suspend fun setEndOfDayNotifiedToday(todayKey: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_NOTIF_LAST_END_OF_DAY_DATE] = todayKey
+        }
+    }
+
+    suspend fun isMissedGoalNotifiedToday(todayKey: String): Boolean {
+        val prefs = context.dataStore.data.first()
+        return prefs[KEY_NOTIF_LAST_MISSED_GOAL_DATE] == todayKey
+    }
+
+    suspend fun setMissedGoalNotifiedToday(todayKey: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_NOTIF_LAST_MISSED_GOAL_DATE] = todayKey
+        }
+    }
+
+    suspend fun getLastShownNotificationTitle(categoryName: String): String? {
+        val prefs = context.dataStore.data.first()
+        val raw = prefs[KEY_NOTIF_LAST_TITLES] ?: ""
+        if (raw.isBlank()) return null
+        val pair = raw.split(";").map { it.split("=") }.find { it.size == 2 && it[0] == categoryName }
+        return pair?.get(1)
+    }
+
+    suspend fun setLastShownNotificationTitle(categoryName: String, title: String) {
+        context.dataStore.edit { prefs ->
+            val raw = prefs[KEY_NOTIF_LAST_TITLES] ?: ""
+            val map = if (raw.isBlank()) mutableMapOf() else {
+                raw.split(";").mapNotNull {
+                    val parts = it.split("=")
+                    if (parts.size == 2) parts[0] to parts[1] else null
+                }.toMap().toMutableMap()
+            }
+            map[categoryName] = title
+            prefs[KEY_NOTIF_LAST_TITLES] = map.entries.joinToString(";") { "${it.key}=${it.value}" }
+        }
+    }
+
+    suspend fun getLastShownStreakBadgeId(): String? {
+        val prefs = context.dataStore.data.first()
+        return prefs[KEY_NOTIF_LAST_SHOWN_STREAK_BADGE_ID]
+    }
+
+    suspend fun setLastShownStreakBadgeId(badgeId: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_NOTIF_LAST_SHOWN_STREAK_BADGE_ID] = badgeId
         }
     }
 

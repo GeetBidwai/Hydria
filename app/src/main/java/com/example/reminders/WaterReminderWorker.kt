@@ -26,15 +26,18 @@ class WaterReminderWorker(
         }
 
         // 2. Check weekend preference
+        val now = Calendar.getInstance()
+        val isWeekend = ReminderHelper.isWeekend(now)
         val weekendsEnabled = preferences.reminderWeekendsEnabled.first()
-        if (!weekendsEnabled && ReminderHelper.isWeekend(Calendar.getInstance())) {
+        if (!weekendsEnabled && isWeekend) {
             return Result.success()
         }
 
         // 3. Check waking hours
         val wakeTime = preferences.wakeTime.first()
         val sleepTime = preferences.sleepTime.first()
-        if (!ReminderHelper.isWithinWakingHours(Calendar.getInstance(), wakeTime, sleepTime)) {
+        val isWithinWaking = ReminderHelper.isWithinWakingHours(now, wakeTime, sleepTime)
+        if (!isWithinWaking) {
             return Result.success()
         }
 
@@ -48,14 +51,60 @@ class WaterReminderWorker(
             return Result.success()
         }
 
-        // 5. Post notification
-        val preferredUnit = preferences.preferredUnit.first()
-        ReminderHelper.showHydrationNotification(
-            context = context,
-            consumedMl = todayIntake,
-            targetMl = dailyTarget,
-            preferredUnit = preferredUnit
+        // 5. Evaluate historical context for yesterday's missed goal
+        val currentMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        val wakeMinutes = ReminderHelper.parseTimeToMinutes(wakeTime, 8 * 60)
+        val isMorningWindow = (currentMinutes - wakeMinutes) in 0..150
+
+        val yesterdayCal = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+        val yesterdayKey = DateTimeUtils.formatDateKey(yesterdayCal.timeInMillis)
+        val yesterdayIntake = database.waterEntryDao().getDailyIntakeMl(yesterdayKey).first()
+
+        val allEntries = database.waterEntryDao().getAllEntries().first()
+        val hasRecordedHistory = allEntries.any { it.dateKey <= yesterdayKey }
+        val isYesterdayMissed = hasRecordedHistory && yesterdayIntake < dailyTarget
+
+        val isMissedGoalNotified = preferences.isMissedGoalNotifiedToday(todayKey)
+        val isEndOfDayNotified = preferences.isEndOfDayNotifiedToday(todayKey)
+
+        // 6. Determine context-aware periodic notification category
+        val category = OceanNotificationEvaluator.determinePeriodicNotificationCategory(
+            remindersEnabled = remindersEnabled,
+            isWeekend = isWeekend,
+            weekendsEnabled = weekendsEnabled,
+            isWithinWakingHours = isWithinWaking,
+            todayIntakeMl = todayIntake,
+            dailyTargetMl = dailyTarget,
+            currentMinutes = currentMinutes,
+            sleepTimeString = sleepTime,
+            isYesterdayMissed = isYesterdayMissed,
+            isMissedGoalNotifiedToday = isMissedGoalNotified,
+            isEndOfDayNotifiedToday = isEndOfDayNotified,
+            isMorningWindow = isMorningWindow
+        ) ?: return Result.success()
+
+        // 7. Select message with rotation to avoid immediate repetition
+        val lastShownTitle = preferences.getLastShownNotificationTitle(category.name)
+        val specificPool = if (category == NotificationCategory.MISSED_GOAL_AND_RECOVERY) {
+            OceanNotificationContent.MISSED_GOALS
+        } else null
+
+        val message = OceanNotificationContent.selectMessage(
+            category = category,
+            lastShownTitle = lastShownTitle,
+            specificPool = specificPool
         )
+
+        // 8. Dispatch notification via ReminderHelper
+        val posted = ReminderHelper.showOceanNotification(context, message)
+        if (posted) {
+            preferences.setLastShownNotificationTitle(category.name, message.title)
+            if (category == NotificationCategory.MISSED_GOAL_AND_RECOVERY) {
+                preferences.setMissedGoalNotifiedToday(todayKey)
+            } else if (category == NotificationCategory.END_OF_DAY_NUDGE) {
+                preferences.setEndOfDayNotifiedToday(todayKey)
+            }
+        }
 
         return Result.success()
     }

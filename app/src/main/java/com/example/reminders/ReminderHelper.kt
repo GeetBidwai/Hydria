@@ -106,13 +106,12 @@ object ReminderHelper {
     }
 
     /**
-     * Posts an audible hydration reminder notification if permissions allow.
+     * Posts an ocean-themed notification with the given title and body.
      */
-    fun showHydrationNotification(
+    fun showOceanNotification(
         context: Context,
-        consumedMl: Int = 0,
-        targetMl: Int = 2500,
-        preferredUnit: String = "ml"
+        message: NotificationMessage,
+        notificationId: Int = NOTIFICATION_ID
     ): Boolean {
         createNotificationChannel(context)
 
@@ -137,25 +136,13 @@ object ReminderHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val bodyText = if (targetMl > 0) {
-            if (preferredUnit == "litres") {
-                val consumedL = String.format(java.util.Locale.US, "%.2f", consumedMl / 1000f)
-                val targetL = String.format(java.util.Locale.US, "%.2f", targetMl / 1000f)
-                "You've logged $consumedL L of $targetL L today. Take a moment to drink a glass of water!"
-            } else {
-                "You've logged $consumedMl ml of $targetMl ml today. Take a moment to drink a glass of water!"
-            }
-        } else {
-            "Stay refreshed! Remember to drink a glass of water."
-        }
-
         val defaultSoundUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle("Time to hydrate! 💧")
-            .setContentText(bodyText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
+            .setContentTitle(message.title)
+            .setContentText(message.body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message.body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setSound(defaultSoundUri)
             .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_VIBRATE)
@@ -165,11 +152,25 @@ object ReminderHelper {
             .build()
 
         return try {
-            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
             true
         } catch (e: SecurityException) {
             false
         }
+    }
+
+    /**
+     * Posts an audible hydration reminder notification if permissions allow.
+     * Backwards-compatible overload using ocean personality content.
+     */
+    fun showHydrationNotification(
+        context: Context,
+        consumedMl: Int = 0,
+        targetMl: Int = 2500,
+        preferredUnit: String = "ml"
+    ): Boolean {
+        val message = OceanNotificationContent.selectMessage(NotificationCategory.REGULAR_REMINDER)
+        return showOceanNotification(context, message)
     }
 
     /**

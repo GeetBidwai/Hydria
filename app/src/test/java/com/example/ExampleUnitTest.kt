@@ -875,5 +875,239 @@ class ExampleUnitTest {
         // Verifies data class structural equality ensures distinctUntilChanged() filters identical instances
         assertTrue(stateA == stateB)
     }
+
+    // =========================================================================
+    // Ocean Notification Personality System Tests
+    // =========================================================================
+
+    @Test
+    fun testOceanNotificationContentTotals() {
+        assertEquals(12, com.example.reminders.OceanNotificationContent.REGULAR_REMINDERS.size)
+        assertEquals(8, com.example.reminders.OceanNotificationContent.PROGRESS_CELEBRATIONS.size)
+        assertEquals(7, com.example.reminders.OceanNotificationContent.STREAK_CELEBRATIONS.size)
+        assertEquals(6, com.example.reminders.OceanNotificationContent.MISSED_GOALS.size)
+        assertEquals(2, com.example.reminders.OceanNotificationContent.RECOVERIES.size)
+        assertEquals(8, com.example.reminders.OceanNotificationContent.MISSED_GOAL_AND_RECOVERY.size)
+        assertEquals(5, com.example.reminders.OceanNotificationContent.END_OF_DAY_NUDGES.size)
+    }
+
+    @Test
+    fun testRegularReminderMessageSelection() {
+        val message = com.example.reminders.OceanNotificationContent.selectMessage(
+            category = com.example.reminders.NotificationCategory.REGULAR_REMINDER
+        )
+        org.junit.Assert.assertNotNull(message)
+        assertTrue(message.title.isNotBlank())
+        assertTrue(message.body.isNotBlank())
+        assertEquals(com.example.reminders.NotificationCategory.REGULAR_REMINDER, message.category)
+    }
+
+    @Test
+    fun testMessageRotationWithoutImmediateRepetition() {
+        val lastTitle = "Poseidon is getting impatient 🌊"
+        for (i in 1..20) {
+            val selected = com.example.reminders.OceanNotificationContent.selectMessage(
+                category = com.example.reminders.NotificationCategory.REGULAR_REMINDER,
+                lastShownTitle = lastTitle
+            )
+            org.junit.Assert.assertNotEquals(
+                "Selected message title must not match lastShownTitle",
+                lastTitle,
+                selected.title
+            )
+        }
+    }
+
+    @Test
+    fun testProgressMilestoneNotificationsTriggeringOncePerDay() {
+        val dailyTarget = 2000
+        // Cross 25% (500ml) from 400ml to 600ml
+        val firstCross = com.example.reminders.OceanNotificationEvaluator.determineMilestonesCrossed(
+            previousIntakeMl = 400,
+            newIntakeMl = 600,
+            dailyTargetMl = dailyTarget,
+            alreadyTriggeredMilestones = emptySet()
+        )
+        assertEquals(listOf(25), firstCross)
+
+        // Second log in the same day: 25% is in alreadyTriggeredMilestones
+        val secondCross = com.example.reminders.OceanNotificationEvaluator.determineMilestonesCrossed(
+            previousIntakeMl = 600,
+            newIntakeMl = 800,
+            dailyTargetMl = dailyTarget,
+            alreadyTriggeredMilestones = setOf(25)
+        )
+        // No new milestone reached (needs 50% = 1000ml)
+        assertTrue(secondCross.isEmpty())
+
+        // Third log reaches 50% (1100ml)
+        val thirdCross = com.example.reminders.OceanNotificationEvaluator.determineMilestonesCrossed(
+            previousIntakeMl = 800,
+            newIntakeMl = 1100,
+            dailyTargetMl = dailyTarget,
+            alreadyTriggeredMilestones = setOf(25)
+        )
+        assertEquals(listOf(50), thirdCross)
+    }
+
+    @Test
+    fun test100PercentGoalCelebration() {
+        val dailyTarget = 2000
+        val crossed = com.example.reminders.OceanNotificationEvaluator.determineMilestonesCrossed(
+            previousIntakeMl = 1800,
+            newIntakeMl = 2000,
+            dailyTargetMl = dailyTarget,
+            alreadyTriggeredMilestones = setOf(25, 50, 75)
+        )
+        assertEquals(listOf(100), crossed)
+
+        val celebration = com.example.reminders.OceanNotificationEvaluator.determineIntakeCelebration(
+            wasInDisaster = false,
+            previousIntakeMl = 1800,
+            newIntakeMl = 2000,
+            dailyTargetMl = dailyTarget,
+            newlyUnlockedStreakBadge = false,
+            alreadyTriggeredMilestones = setOf(25, 50, 75)
+        )
+        org.junit.Assert.assertNotNull(celebration)
+        assertEquals(com.example.reminders.NotificationCategory.PROGRESS_CELEBRATION, celebration!!.first)
+        // Candidates pool is PROGRESS_GOAL_ACCOMPLISHED
+        assertTrue(celebration.second.any { it.title == "MISSION ACCOMPLISHED 🏆" })
+    }
+
+    @Test
+    fun testStreakMilestoneNotifications() {
+        val celebration = com.example.reminders.OceanNotificationEvaluator.determineIntakeCelebration(
+            wasInDisaster = false,
+            previousIntakeMl = 2200,
+            newIntakeMl = 2500,
+            dailyTargetMl = 2500,
+            newlyUnlockedStreakBadge = true,
+            alreadyTriggeredMilestones = setOf(25, 50, 75, 100)
+        )
+        org.junit.Assert.assertNotNull(celebration)
+        assertEquals(com.example.reminders.NotificationCategory.STREAK_CELEBRATION, celebration!!.first)
+        assertTrue(celebration.second.any { it.title.contains("Triton") || it.title.contains("streak") })
+    }
+
+    @Test
+    fun testMissedDayNotificationOnlyAfterDayEnd() {
+        // Morning after missed day: current time 08:30 (510 min), wake time 08:00
+        val morningCategory = com.example.reminders.OceanNotificationEvaluator.determinePeriodicNotificationCategory(
+            remindersEnabled = true,
+            isWeekend = false,
+            weekendsEnabled = true,
+            isWithinWakingHours = true,
+            todayIntakeMl = 0,
+            dailyTargetMl = 2500,
+            currentMinutes = 8 * 60 + 30,
+            sleepTimeString = "22:00",
+            isYesterdayMissed = true,
+            isMissedGoalNotifiedToday = false,
+            isEndOfDayNotifiedToday = false,
+            isMorningWindow = true
+        )
+        assertEquals(com.example.reminders.NotificationCategory.MISSED_GOAL_AND_RECOVERY, morningCategory)
+
+        // Once already notified today, does NOT repeat missed day notification
+        val repeatedCategory = com.example.reminders.OceanNotificationEvaluator.determinePeriodicNotificationCategory(
+            remindersEnabled = true,
+            isWeekend = false,
+            weekendsEnabled = true,
+            isWithinWakingHours = true,
+            todayIntakeMl = 0,
+            dailyTargetMl = 2500,
+            currentMinutes = 9 * 60,
+            sleepTimeString = "22:00",
+            isYesterdayMissed = true,
+            isMissedGoalNotifiedToday = true,
+            isEndOfDayNotifiedToday = false,
+            isMorningWindow = true
+        )
+        assertEquals(com.example.reminders.NotificationCategory.REGULAR_REMINDER, repeatedCategory)
+    }
+
+    @Test
+    fun testRecoveryNotification() {
+        // User was in disaster, drinks up to 100% daily goal
+        val celebration = com.example.reminders.OceanNotificationEvaluator.determineIntakeCelebration(
+            wasInDisaster = true,
+            previousIntakeMl = 1500,
+            newIntakeMl = 2500,
+            dailyTargetMl = 2500,
+            newlyUnlockedStreakBadge = false,
+            alreadyTriggeredMilestones = emptySet()
+        )
+        org.junit.Assert.assertNotNull(celebration)
+        assertEquals(com.example.reminders.NotificationCategory.MISSED_GOAL_AND_RECOVERY, celebration!!.first)
+        // Pool contains recovery comeback messages
+        assertTrue(celebration.second.any { it.title == "THE COMEBACK! ⚡" })
+    }
+
+    @Test
+    fun testEndOfDayNotificationRespectingSleepTime() {
+        val sleepTime = "22:00"
+        // 20:30 (90 min before sleep) -> within 120-min window
+        assertTrue(com.example.reminders.OceanNotificationEvaluator.isNearEndOfDay(20 * 60 + 30, sleepTime))
+        // 14:00 (8 hours before sleep) -> not near end of day
+        assertFalse(com.example.reminders.OceanNotificationEvaluator.isNearEndOfDay(14 * 60, sleepTime))
+
+        // Evaluation near end of day with incomplete goal
+        val category = com.example.reminders.OceanNotificationEvaluator.determinePeriodicNotificationCategory(
+            remindersEnabled = true,
+            isWeekend = false,
+            weekendsEnabled = true,
+            isWithinWakingHours = true,
+            todayIntakeMl = 1200,
+            dailyTargetMl = 2500,
+            currentMinutes = 20 * 60 + 30,
+            sleepTimeString = sleepTime,
+            isYesterdayMissed = false,
+            isMissedGoalNotifiedToday = false,
+            isEndOfDayNotifiedToday = false,
+            isMorningWindow = false
+        )
+        assertEquals(com.example.reminders.NotificationCategory.END_OF_DAY_NUDGE, category)
+    }
+
+    @Test
+    fun testNoRoutineReminderAfterGoalCompletion() {
+        val category = com.example.reminders.OceanNotificationEvaluator.determinePeriodicNotificationCategory(
+            remindersEnabled = true,
+            isWeekend = false,
+            weekendsEnabled = true,
+            isWithinWakingHours = true,
+            todayIntakeMl = 2500,
+            dailyTargetMl = 2500,
+            currentMinutes = 14 * 60,
+            sleepTimeString = "22:00",
+            isYesterdayMissed = false,
+            isMissedGoalNotifiedToday = false,
+            isEndOfDayNotifiedToday = false,
+            isMorningWindow = false
+        )
+        org.junit.Assert.assertNull("No periodic reminder should be sent after daily goal completion", category)
+    }
+
+    @Test
+    fun testNoDuplicateNotificationsAfterAppRestart() {
+        // Simulating app restart where DataStore persisted triggered milestones: [25, 50, 75, 100]
+        val persistedMilestones = setOf(25, 50, 75, 100)
+        val crossed = com.example.reminders.OceanNotificationEvaluator.determineMilestonesCrossed(
+            previousIntakeMl = 0,
+            newIntakeMl = 2500,
+            dailyTargetMl = 2500,
+            alreadyTriggeredMilestones = persistedMilestones
+        )
+        assertTrue("No milestones should re-fire after app restart", crossed.isEmpty())
+    }
+
+    @Test
+    fun testExistingReminderSettingsRemainingUnchanged() {
+        val intervals = com.example.reminders.ReminderScheduler.AVAILABLE_INTERVALS
+        assertEquals(listOf(30, 60, 90, 120), intervals)
+        assertEquals("water_reminders_channel_v2", com.example.reminders.ReminderHelper.CHANNEL_ID)
+        assertEquals(1001, com.example.reminders.ReminderHelper.NOTIFICATION_ID)
+    }
 }
 

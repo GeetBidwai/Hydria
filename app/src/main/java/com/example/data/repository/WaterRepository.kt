@@ -9,10 +9,14 @@ import com.example.data.preferences.UserPreferencesDataStore
 import com.example.domain.gamification.GamificationEngine
 import com.example.domain.gamification.GamificationState
 import com.example.domain.model.UserProfile
+import com.example.reminders.OceanNotificationContent
+import com.example.reminders.OceanNotificationEvaluator
+import com.example.reminders.ReminderHelper
 import com.example.widgets.WidgetRefreshHelper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 
 class WaterRepository(
@@ -85,20 +89,86 @@ class WaterRepository(
     }
 
     suspend fun logWater(amountMl: Int, dateKey: String): Long {
+        val prevIntake = try { waterEntryDao.getDailyIntakeMl(dateKey).first() } catch (_: Exception) { 0 }
         val entry = WaterEntry(
             amountMl = amountMl,
             timestamp = System.currentTimeMillis(),
             dateKey = dateKey
         )
         val id = waterEntryDao.insertEntry(entry)
+        val newIntake = prevIntake + amountMl
         triggerWidgetRefresh()
+        checkAndPostIntakeCelebration(dateKey, prevIntake, newIntake)
         return id
     }
 
     suspend fun insertEntry(entry: WaterEntry): Long {
+        val prevIntake = try { waterEntryDao.getDailyIntakeMl(entry.dateKey).first() } catch (_: Exception) { 0 }
         val id = waterEntryDao.insertEntry(entry)
+        val newIntake = prevIntake + entry.amountMl
         triggerWidgetRefresh()
+        checkAndPostIntakeCelebration(entry.dateKey, prevIntake, newIntake)
         return id
+    }
+
+    private suspend fun checkAndPostIntakeCelebration(dateKey: String, previousIntake: Int, newIntake: Int) {
+        val todayKey = DateTimeUtils.getTodayDateKey()
+        if (dateKey != todayKey || context == null) return
+
+        try {
+            val remindersEnabled = preferencesDataStore.remindersEnabled.first()
+            if (!remindersEnabled) return
+
+            val dailyTarget = preferencesDataStore.dailyTargetMl.first()
+            val alreadyTriggered = preferencesDataStore.getTriggeredMilestonesToday(todayKey)
+            val previousState = lastPersistedSnapshot
+
+            val wasInDisaster = previousState?.isDisasterPath == true
+            val isTargetReached = dailyTarget > 0 && newIntake >= dailyTarget
+
+            val crossedMilestones = OceanNotificationEvaluator.determineMilestonesCrossed(
+                previousIntakeMl = previousIntake,
+                newIntakeMl = newIntake,
+                dailyTargetMl = dailyTarget,
+                alreadyTriggeredMilestones = alreadyTriggered
+            )
+
+            val lastShownBadge = preferencesDataStore.getLastShownStreakBadgeId()
+            val currentBadge = previousState?.currentMonthUnlockedBadgeIds?.lastOrNull()
+            val newlyUnlockedStreakBadge = isTargetReached && currentBadge != null && currentBadge != lastShownBadge
+
+            val celebration = OceanNotificationEvaluator.determineIntakeCelebration(
+                wasInDisaster = wasInDisaster,
+                previousIntakeMl = previousIntake,
+                newIntakeMl = newIntake,
+                dailyTargetMl = dailyTarget,
+                newlyUnlockedStreakBadge = newlyUnlockedStreakBadge,
+                alreadyTriggeredMilestones = alreadyTriggered
+            )
+
+            if (celebration != null) {
+                val category = celebration.first
+                val lastTitle = preferencesDataStore.getLastShownNotificationTitle(category.name)
+                val message = OceanNotificationContent.selectMessage(
+                    category = category,
+                    lastShownTitle = lastTitle,
+                    specificPool = celebration.second
+                )
+
+                val posted = ReminderHelper.showOceanNotification(context, message)
+                if (posted) {
+                    preferencesDataStore.setLastShownNotificationTitle(category.name, message.title)
+                    if (crossedMilestones.isNotEmpty()) {
+                        preferencesDataStore.recordMilestonesTriggeredToday(todayKey, crossedMilestones.toSet())
+                    }
+                    if (newlyUnlockedStreakBadge && currentBadge != null) {
+                        preferencesDataStore.setLastShownStreakBadgeId(currentBadge)
+                    }
+                }
+            } else if (crossedMilestones.isNotEmpty()) {
+                preferencesDataStore.recordMilestonesTriggeredToday(todayKey, crossedMilestones.toSet())
+            }
+        } catch (_: Exception) {}
     }
 
     suspend fun deleteEntry(id: Long) {
