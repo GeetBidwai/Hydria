@@ -12,6 +12,7 @@ import com.example.domain.model.UserProfile
 import com.example.reminders.OceanNotificationContent
 import com.example.reminders.OceanNotificationEvaluator
 import com.example.reminders.ReminderHelper
+import com.example.reminders.ReminderScheduler
 import com.example.widgets.WidgetRefreshHelper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -57,6 +58,23 @@ class WaterRepository(
 
     val widgetQuickAddMl: Flow<Int> = preferencesDataStore.widgetQuickAddMl
 
+    val lastIntakeTimestamp: Flow<Long> = preferencesDataStore.lastIntakeTimestamp
+
+    suspend fun setLastIntakeTimestamp(timestamp: Long) {
+        preferencesDataStore.setLastIntakeTimestamp(timestamp)
+    }
+
+    private suspend fun triggerIntakeReminderReset() {
+        if (context == null) return
+        try {
+            val enabled = preferencesDataStore.remindersEnabled.first()
+            if (enabled) {
+                val interval = preferencesDataStore.reminderIntervalMinutes.first()
+                ReminderScheduler.rescheduleAfterIntake(context, interval)
+            }
+        } catch (_: Exception) {}
+    }
+
     val gamificationState: Flow<GamificationState> = combine(
         getDailyTotals(),
         dailyTargetMl,
@@ -89,15 +107,18 @@ class WaterRepository(
     }
 
     suspend fun logWater(amountMl: Int, dateKey: String): Long {
+        val now = System.currentTimeMillis()
         val prevIntake = try { waterEntryDao.getDailyIntakeMl(dateKey).first() } catch (_: Exception) { 0 }
         val entry = WaterEntry(
             amountMl = amountMl,
-            timestamp = System.currentTimeMillis(),
+            timestamp = now,
             dateKey = dateKey
         )
         val id = waterEntryDao.insertEntry(entry)
         val newIntake = prevIntake + amountMl
+        preferencesDataStore.setLastIntakeTimestamp(now)
         triggerWidgetRefresh()
+        triggerIntakeReminderReset()
         checkAndPostIntakeCelebration(dateKey, prevIntake, newIntake)
         return id
     }
@@ -106,7 +127,9 @@ class WaterRepository(
         val prevIntake = try { waterEntryDao.getDailyIntakeMl(entry.dateKey).first() } catch (_: Exception) { 0 }
         val id = waterEntryDao.insertEntry(entry)
         val newIntake = prevIntake + entry.amountMl
+        preferencesDataStore.setLastIntakeTimestamp(entry.timestamp)
         triggerWidgetRefresh()
+        triggerIntakeReminderReset()
         checkAndPostIntakeCelebration(entry.dateKey, prevIntake, newIntake)
         return id
     }

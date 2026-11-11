@@ -34,6 +34,9 @@ interface WaterEntryDao {
     @Query("SELECT dateKey, SUM(amountMl) as totalMl FROM water_entries GROUP BY dateKey ORDER BY dateKey DESC")
     fun getDailyTotals(): Flow<List<DateTotal>>
 
+    @Query("SELECT MAX(timestamp) FROM water_entries")
+    suspend fun getLatestEntryTimestamp(): Long?
+
     @Query("DELETE FROM water_entries")
     suspend fun clearAll()
 }

@@ -43,6 +43,8 @@ class UserPreferencesDataStore(private val context: Context) {
         val KEY_REMINDER_INTERVAL_HOURS = intPreferencesKey("reminder_interval_hours")
         val KEY_REMINDER_INTERVAL_MINUTES = intPreferencesKey("reminder_interval_minutes")
         val KEY_REMINDER_WEEKENDS_ENABLED = booleanPreferencesKey("reminder_weekends_enabled")
+        val KEY_REMINDER_INTERVAL_MIGRATED_V2 = booleanPreferencesKey("reminder_interval_migrated_v2")
+        val KEY_LAST_INTAKE_TIMESTAMP = androidx.datastore.preferences.core.longPreferencesKey("last_intake_timestamp")
         val KEY_WIDGET_QUICK_ADD_ML = intPreferencesKey("widget_quick_add_ml")
 
         // Gamification preferences
@@ -86,7 +88,38 @@ class UserPreferencesDataStore(private val context: Context) {
     }
 
     val reminderIntervalMinutes: Flow<Int> = context.dataStore.data.map { prefs ->
-        prefs[KEY_REMINDER_INTERVAL_MINUTES] ?: 60
+        val isMigrated = prefs[KEY_REMINDER_INTERVAL_MIGRATED_V2] ?: false
+        val saved = prefs[KEY_REMINDER_INTERVAL_MINUTES]
+        if (saved == null) {
+            120
+        } else if (!isMigrated && saved == 60) {
+            120
+        } else {
+            saved
+        }
+    }.distinctUntilChanged()
+
+    val lastIntakeTimestamp: Flow<Long> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LAST_INTAKE_TIMESTAMP] ?: 0L
+    }.distinctUntilChanged()
+
+    suspend fun setLastIntakeTimestamp(timestamp: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAST_INTAKE_TIMESTAMP] = timestamp
+        }
+    }
+
+    suspend fun ensureReminderIntervalMigrated() {
+        context.dataStore.edit { prefs ->
+            val isMigrated = prefs[KEY_REMINDER_INTERVAL_MIGRATED_V2] ?: false
+            if (!isMigrated) {
+                val saved = prefs[KEY_REMINDER_INTERVAL_MINUTES]
+                if (saved == null || saved == 60) {
+                    prefs[KEY_REMINDER_INTERVAL_MINUTES] = 120
+                }
+                prefs[KEY_REMINDER_INTERVAL_MIGRATED_V2] = true
+            }
+        }
     }
 
     val reminderWeekendsEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -106,6 +139,16 @@ class UserPreferencesDataStore(private val context: Context) {
     }
 
     val userProfile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
+        val isMigrated = prefs[KEY_REMINDER_INTERVAL_MIGRATED_V2] ?: false
+        val savedInterval = prefs[KEY_REMINDER_INTERVAL_MINUTES]
+        val effectiveInterval = if (savedInterval == null) {
+            120
+        } else if (!isMigrated && savedInterval == 60) {
+            120
+        } else {
+            savedInterval
+        }
+
         UserProfile(
             name = prefs[KEY_USER_NAME] ?: "",
             age = prefs[KEY_USER_AGE] ?: 28,
@@ -117,7 +160,7 @@ class UserPreferencesDataStore(private val context: Context) {
             wakeTime = prefs[KEY_WAKE_TIME] ?: "07:00",
             sleepTime = prefs[KEY_SLEEP_TIME] ?: "23:00",
             climate = Climate.TEMPERATE,
-            reminderIntervalMinutes = prefs[KEY_REMINDER_INTERVAL_MINUTES] ?: 60,
+            reminderIntervalMinutes = effectiveInterval,
             reminderWeekendsEnabled = prefs[KEY_REMINDER_WEEKENDS_ENABLED] ?: true
         )
     }
@@ -162,6 +205,7 @@ class UserPreferencesDataStore(private val context: Context) {
     suspend fun setReminderIntervalMinutes(minutes: Int) {
         context.dataStore.edit { prefs ->
             prefs[KEY_REMINDER_INTERVAL_MINUTES] = minutes
+            prefs[KEY_REMINDER_INTERVAL_MIGRATED_V2] = true
         }
     }
 

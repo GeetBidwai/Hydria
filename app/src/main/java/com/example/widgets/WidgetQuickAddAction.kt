@@ -8,6 +8,7 @@ import com.example.core.constants.AppConstants
 import com.example.core.utils.DateTimeUtils
 import com.example.data.local.WaterDatabase
 import com.example.data.local.WaterEntry
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -49,6 +50,17 @@ class WidgetQuickAddAction : ActionCallback {
             dateKey = todayKey
         )
         database.waterEntryDao().insertEntry(entry)
+
+        // Record intake timestamp and reset reminder schedule
+        val preferences = com.example.data.preferences.UserPreferencesDataStore(context)
+        preferences.setLastIntakeTimestamp(now)
+        try {
+            val enabled = preferences.remindersEnabled.first()
+            if (enabled) {
+                val interval = preferences.reminderIntervalMinutes.first()
+                com.example.reminders.ReminderScheduler.rescheduleAfterIntake(context, interval)
+            }
+        } catch (_: Exception) {}
 
         // Immediately update both widgets with the fresh database records
         WidgetRefreshHelper.refreshAllWidgets(context)

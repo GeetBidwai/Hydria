@@ -51,6 +51,25 @@ class WaterReminderWorker(
             return Result.success()
         }
 
+        // 4b. Check recent water intake (Intake-based suppression)
+        val intervalMinutes = preferences.reminderIntervalMinutes.first()
+        val minIntervalMinutes = ReminderScheduler.getMinIntervalMinutes(intervalMinutes)
+        val lastIntakePref = preferences.lastIntakeTimestamp.first()
+        val latestDbIntake = try { database.waterEntryDao().getLatestEntryTimestamp() ?: 0L } catch (_: Exception) { 0L }
+        val effectiveLastIntake = maxOf(lastIntakePref, latestDbIntake)
+
+        if (effectiveLastIntake > 0) {
+            val elapsedMillis = System.currentTimeMillis() - effectiveLastIntake
+            val minIntervalMillis = minIntervalMinutes * 60 * 1000L
+            if (elapsedMillis < minIntervalMillis) {
+                // Water was consumed recently; suppress notification and reschedule for remaining delay
+                val remainingMillis = minIntervalMillis - elapsedMillis
+                val remainingMinutes = ((remainingMillis / (60 * 1000L)).toInt()).coerceAtLeast(15)
+                ReminderScheduler.scheduleReminders(context, intervalMinutes, remainingMinutes)
+                return Result.success()
+            }
+        }
+
         // 5. Evaluate historical context for yesterday's missed goal
         val currentMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
         val wakeMinutes = ReminderHelper.parseTimeToMinutes(wakeTime, 8 * 60)
@@ -105,6 +124,10 @@ class WaterReminderWorker(
                 preferences.setEndOfDayNotifiedToday(todayKey)
             }
         }
+
+        // Reschedule next reminder with natural timing variation
+        val nextDelay = ReminderScheduler.calculateEffectiveDelayMinutes(intervalMinutes)
+        ReminderScheduler.scheduleReminders(context, intervalMinutes, nextDelay)
 
         return Result.success()
     }

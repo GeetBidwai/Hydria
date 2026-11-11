@@ -207,7 +207,11 @@ fun DashboardScreen(
                         // Consumed / Target display
                         val consumedLiters = String.format(Locale.getDefault(), "%.2f L", uiState.consumedMl / 1000f)
                         val targetLiters = String.format(Locale.getDefault(), "%.2f L", uiState.dailyTargetMl / 1000f)
-                        val subtitleFormatted = "${uiState.consumedMl} ml / ${uiState.dailyTargetMl} ml ($consumedLiters / $targetLiters)"
+                        val subtitleFormatted = if (uiState.preferredUnit == "litres") {
+                            "$consumedLiters / $targetLiters"
+                        } else {
+                            "${uiState.consumedMl} / ${uiState.dailyTargetMl} ml"
+                        }
 
                         WaterCircularProgress(
                             currentMl = uiState.consumedMl,

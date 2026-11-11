@@ -36,6 +36,6 @@ data class UserProfile(
     val wakeTime: String = "07:00",
     val sleepTime: String = "23:00",
     val climate: Climate = Climate.TEMPERATE,
-    val reminderIntervalMinutes: Int = 60,
+    val reminderIntervalMinutes: Int = 120,
     val reminderWeekendsEnabled: Boolean = true
 )

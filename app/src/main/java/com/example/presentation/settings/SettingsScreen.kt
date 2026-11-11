@@ -121,7 +121,7 @@ fun SettingsScreen(
     val preferredUnit by repository.preferredUnit.collectAsState(initial = "ml")
 
     val remindersEnabled by repository.remindersEnabled.collectAsState(initial = true)
-    val reminderIntervalMinutes by repository.reminderIntervalMinutes.collectAsState(initial = 60)
+    val reminderIntervalMinutes by repository.reminderIntervalMinutes.collectAsState(initial = 120)
     val reminderWeekendsEnabled by repository.reminderWeekendsEnabled.collectAsState(initial = true)
     val wakeTime by repository.wakeTime.collectAsState(initial = "08:00")
     val sleepTime by repository.sleepTime.collectAsState(initial = "22:00")
@@ -639,9 +639,9 @@ fun SettingsScreen(
                         val isSelected = reminderIntervalMinutes == interval
                         val label = when (interval) {
                             30 -> "Every 30 minutes"
-                            60 -> "Every 60 minutes (Recommended)"
+                            60 -> "Every 60 minutes"
                             90 -> "Every 90 minutes"
-                            120 -> "Every 120 minutes (2 hours)"
+                            120 -> "Every 120 minutes (2 hours, Recommended)"
                             else -> "Every $interval minutes"
                         }
 

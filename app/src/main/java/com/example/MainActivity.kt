@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
 
         // Ensure reminders are registered in WorkManager and widgets refreshed
         lifecycleScope.launch {
+            preferencesDataStore.ensureReminderIntervalMigrated()
             val enabled = preferencesDataStore.remindersEnabled.first()
             if (enabled) {
                 val interval = preferencesDataStore.reminderIntervalMinutes.first()

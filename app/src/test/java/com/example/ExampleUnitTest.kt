@@ -1299,6 +1299,7 @@ class ExampleUnitTest {
         val intervals = listOf(30, 60, 90, 120)
 
         assertTrue(intervals.contains(60))
+        assertTrue(intervals.contains(120))
         assertEquals(4, intervals.size)
         assertEquals(300, defaultWidgetAmount)
 
@@ -1309,6 +1310,98 @@ class ExampleUnitTest {
         assertFalse("25:00".matches(timeRegex))
         assertFalse("12:60".matches(timeRegex))
         assertFalse("invalid".matches(timeRegex))
+    }
+
+    @Test
+    fun testSmartReminderDefaultIntervalIs120Minutes() {
+        val profile = UserProfile()
+        assertEquals(120, profile.reminderIntervalMinutes)
+        assertEquals(120, com.example.reminders.ReminderScheduler.DEFAULT_INTERVAL_MINUTES)
+    }
+
+    @Test
+    fun testReminderSchedulerMinIntervalCalculation() {
+        assertEquals(100, com.example.reminders.ReminderScheduler.getMinIntervalMinutes(120))
+        assertEquals(75, com.example.reminders.ReminderScheduler.getMinIntervalMinutes(90))
+        assertEquals(50, com.example.reminders.ReminderScheduler.getMinIntervalMinutes(60))
+        assertEquals(25, com.example.reminders.ReminderScheduler.getMinIntervalMinutes(30))
+    }
+
+    @Test
+    fun testNaturalTimingVariationBounds() {
+        // Test 120-minute interval produces values strictly within [100, 120]
+        repeat(100) {
+            val delay = com.example.reminders.ReminderScheduler.calculateEffectiveDelayMinutes(120)
+            assertTrue("Expected delay in 100..120 but got $delay", delay in 100..120)
+        }
+
+        // Test 90-minute interval produces values strictly within [75, 90]
+        repeat(50) {
+            val delay = com.example.reminders.ReminderScheduler.calculateEffectiveDelayMinutes(90)
+            assertTrue("Expected delay in 75..90 but got $delay", delay in 75..90)
+        }
+
+        // Test 60-minute interval produces values strictly within [50, 60]
+        repeat(50) {
+            val delay = com.example.reminders.ReminderScheduler.calculateEffectiveDelayMinutes(60)
+            assertTrue("Expected delay in 50..60 but got $delay", delay in 50..60)
+        }
+
+        // Test 30-minute interval produces values strictly within [25, 30]
+        repeat(50) {
+            val delay = com.example.reminders.ReminderScheduler.calculateEffectiveDelayMinutes(30)
+            assertTrue("Expected delay in 25..30 but got $delay", delay in 25..30)
+        }
+    }
+
+    @Test
+    fun testIntakeBasedReminderSuppressionLogic() {
+        val now = 10_000_000L
+        val minIntervalMinutes = com.example.reminders.ReminderScheduler.getMinIntervalMinutes(120) // 100 min
+        val minIntervalMillis = minIntervalMinutes * 60 * 1000L
+
+        // Scenario A: User drank water 20 minutes ago (< 100 min)
+        val recentIntake = now - (20 * 60 * 1000L)
+        val elapsedA = now - recentIntake
+        val isSuppressedA = elapsedA < minIntervalMillis
+        assertTrue("Intake 20m ago must be suppressed", isSuppressedA)
+        val remainingMinutesA = ((minIntervalMillis - elapsedA) / (60 * 1000L)).toInt()
+        assertEquals(80, remainingMinutesA)
+
+        // Scenario B: User drank water 105 minutes ago (>= 100 min)
+        val olderIntake = now - (105 * 60 * 1000L)
+        val elapsedB = now - olderIntake
+        val isSuppressedB = elapsedB < minIntervalMillis
+        assertFalse("Intake 105m ago must not be suppressed", isSuppressedB)
+
+        // Scenario C: No intake recorded (effectiveLastIntake == 0)
+        val noIntake = 0L
+        val shouldSuppressC = noIntake > 0 && (now - noIntake < minIntervalMillis)
+        assertFalse("Zero timestamp must not suppress reminders", shouldSuppressC)
+    }
+
+    @Test
+    fun testGamificationCelebrationIndependenceFromReminderSuppression() {
+        // Milestone crossing should trigger regardless of whether regular reminder is suppressed
+        val crossed = com.example.reminders.OceanNotificationEvaluator.determineMilestonesCrossed(
+            previousIntakeMl = 1100,
+            newIntakeMl = 1300,
+            dailyTargetMl = 2500, // 50% is 1250ml
+            alreadyTriggeredMilestones = emptySet()
+        )
+        assertEquals(1, crossed.size)
+        assertEquals(50, crossed.first())
+
+        val celebration = com.example.reminders.OceanNotificationEvaluator.determineIntakeCelebration(
+            wasInDisaster = false,
+            previousIntakeMl = 1100,
+            newIntakeMl = 1300,
+            dailyTargetMl = 2500,
+            newlyUnlockedStreakBadge = false,
+            alreadyTriggeredMilestones = emptySet()
+        )
+        assertTrue(celebration != null)
+        assertEquals(com.example.reminders.NotificationCategory.PROGRESS_CELEBRATION, celebration?.first)
     }
 }
 

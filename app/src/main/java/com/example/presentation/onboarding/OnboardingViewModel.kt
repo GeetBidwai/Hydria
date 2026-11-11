@@ -24,7 +24,7 @@ data class OnboardingUiState(
     val exerciseMinutes: String = "30",
     val preferredUnit: String = "ml", // "ml" or "litres"
     val remindersEnabled: Boolean = true,
-    val reminderIntervalMinutes: Int = 60,
+    val reminderIntervalMinutes: Int = 120,
     val reminderWeekendsEnabled: Boolean = true,
     val wakeTime: String = "07:00",
     val sleepTime: String = "23:00",
@@ -48,7 +48,7 @@ class OnboardingViewModel(
         viewModelScope.launch {
             repository.userProfile.collect { profile ->
                 val target = HydrationCalculator.calculateDailyTargetMl(profile)
-                val interval = try { repository.reminderIntervalMinutes.first() } catch (_: Exception) { 60 }
+                val interval = try { repository.reminderIntervalMinutes.first() } catch (_: Exception) { 120 }
                 val weekends = try { repository.reminderWeekendsEnabled.first() } catch (_: Exception) { true }
 
                 _uiState.update { current ->
