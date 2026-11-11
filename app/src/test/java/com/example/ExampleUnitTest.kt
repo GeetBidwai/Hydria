@@ -1109,5 +1109,107 @@ class ExampleUnitTest {
         assertEquals("water_reminders_channel_v2", com.example.reminders.ReminderHelper.CHANNEL_ID)
         assertEquals(1001, com.example.reminders.ReminderHelper.NOTIFICATION_ID)
     }
+
+    // =========================================================================
+    // Stage 1: Design System & Hydria Mascot Tests
+    // =========================================================================
+
+    @Test
+    fun testHydriaMascotMoodResolution() {
+        val target = 2000
+
+        // 0% -> CHEERFUL_START
+        assertEquals(
+            com.example.presentation.components.HydriaMascotMood.CHEERFUL_START,
+            com.example.presentation.components.HydriaMascotHelper.resolveMood(0, target)
+        )
+
+        // 25% -> PROGRESS
+        assertEquals(
+            com.example.presentation.components.HydriaMascotMood.PROGRESS,
+            com.example.presentation.components.HydriaMascotHelper.resolveMood(500, target)
+        )
+
+        // 50% -> HALFWAY
+        assertEquals(
+            com.example.presentation.components.HydriaMascotMood.HALFWAY,
+            com.example.presentation.components.HydriaMascotHelper.resolveMood(1000, target)
+        )
+
+        // 75% -> HALFWAY
+        assertEquals(
+            com.example.presentation.components.HydriaMascotMood.HALFWAY,
+            com.example.presentation.components.HydriaMascotHelper.resolveMood(1500, target)
+        )
+
+        // 100% -> GOAL_MET
+        assertEquals(
+            com.example.presentation.components.HydriaMascotMood.GOAL_MET,
+            com.example.presentation.components.HydriaMascotHelper.resolveMood(2000, target)
+        )
+
+        // 120% -> GOAL_MET
+        assertEquals(
+            com.example.presentation.components.HydriaMascotMood.GOAL_MET,
+            com.example.presentation.components.HydriaMascotHelper.resolveMood(2400, target)
+        )
+
+        // Disaster Path -> MISSED_GOAL
+        assertEquals(
+            com.example.presentation.components.HydriaMascotMood.MISSED_GOAL,
+            com.example.presentation.components.HydriaMascotHelper.resolveMood(500, target, isDisaster = true)
+        )
+
+        // Disaster Recovery -> RECOVERY
+        assertEquals(
+            com.example.presentation.components.HydriaMascotMood.RECOVERY,
+            com.example.presentation.components.HydriaMascotHelper.resolveMood(2000, target, isRecovery = true)
+        )
+    }
+
+    @Test
+    fun testHydriaMascotCompanionMessages() {
+        val moods = com.example.presentation.components.HydriaMascotMood.values()
+        assertEquals(6, moods.size)
+
+        for (mood in moods) {
+            val msg = com.example.presentation.components.HydriaMascotHelper.getCompanionMessage(mood)
+            assertTrue("Message for $mood must not be blank", msg.isNotBlank())
+        }
+
+        assertEquals(
+            "Let's get this ocean adventure started!",
+            com.example.presentation.components.HydriaMascotHelper.getCompanionMessage(com.example.presentation.components.HydriaMascotMood.CHEERFUL_START)
+        )
+        assertEquals(
+            "Nice! The tide is rising.",
+            com.example.presentation.components.HydriaMascotHelper.getCompanionMessage(com.example.presentation.components.HydriaMascotMood.PROGRESS)
+        )
+        assertEquals(
+            "Halfway there, ocean explorer!",
+            com.example.presentation.components.HydriaMascotHelper.getCompanionMessage(com.example.presentation.components.HydriaMascotMood.HALFWAY)
+        )
+        assertEquals(
+            "The ocean celebrates you! You legend!",
+            com.example.presentation.components.HydriaMascotHelper.getCompanionMessage(com.example.presentation.components.HydriaMascotMood.GOAL_MET)
+        )
+        assertEquals(
+            "We missed you yesterday. Ready for a comeback?",
+            com.example.presentation.components.HydriaMascotHelper.getCompanionMessage(com.example.presentation.components.HydriaMascotMood.MISSED_GOAL)
+        )
+        assertEquals(
+            "That's the spirit! Welcome back!",
+            com.example.presentation.components.HydriaMascotHelper.getCompanionMessage(com.example.presentation.components.HydriaMascotMood.RECOVERY)
+        )
+    }
+
+    @Test
+    fun testOceanDesignTokensAndBrushes() {
+        org.junit.Assert.assertNotNull(com.example.ui.theme.OceanBrushes.heroBrush())
+        org.junit.Assert.assertNotNull(com.example.ui.theme.OceanBrushes.cardBrush())
+        org.junit.Assert.assertNotNull(com.example.ui.theme.OceanBrushes.waterBrush())
+        org.junit.Assert.assertNotNull(com.example.ui.theme.OceanBrushes.celebrationBrush())
+        assertEquals(3, com.example.ui.theme.OceanGradientHero.size)
+    }
 }
 
