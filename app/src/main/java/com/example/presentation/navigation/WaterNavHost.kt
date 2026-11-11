@@ -181,11 +181,11 @@ fun WaterBottomNavigation(
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = WaterPrimary,
-                    selectedTextColor = WaterPrimary,
+                    selectedIconColor = com.example.ui.theme.OceanAqua,
+                    selectedTextColor = com.example.ui.theme.OceanAqua,
                     unselectedIconColor = WaterTextSecondary,
                     unselectedTextColor = WaterTextSecondary,
-                    indicatorColor = WaterPrimaryContainer
+                    indicatorColor = com.example.ui.theme.OceanAqua.copy(alpha = 0.15f)
                 ),
                 modifier = Modifier.testTag(item.testTag)
             )

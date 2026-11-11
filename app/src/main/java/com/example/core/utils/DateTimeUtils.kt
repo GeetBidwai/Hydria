@@ -102,4 +102,28 @@ object DateTimeUtils {
         }
         return list
     }
+
+    /**
+     * Returns the day-of-week for the 1st day of the given month (Calendar.SUNDAY = 1, MONDAY = 2, etc.)
+     */
+    fun getFirstDayOfWeekForMonth(year: Int, monthIndex: Int): Int {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.YEAR, year)
+        cal.set(Calendar.MONTH, monthIndex)
+        cal.set(Calendar.DAY_OF_MONTH, 1)
+        return cal.get(Calendar.DAY_OF_WEEK)
+    }
+
+    fun getShortMonthName(monthIndex: Int): String {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.MONTH, monthIndex)
+        return SimpleDateFormat("MMM", Locale.getDefault()).format(cal.time)
+    }
+
+    fun getMonthName(monthIndex: Int): String {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.MONTH, monthIndex)
+        return SimpleDateFormat("MMMM", Locale.getDefault()).format(cal.time)
+    }
 }
+

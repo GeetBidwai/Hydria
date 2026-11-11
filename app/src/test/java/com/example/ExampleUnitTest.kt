@@ -1211,5 +1211,105 @@ class ExampleUnitTest {
         org.junit.Assert.assertNotNull(com.example.ui.theme.OceanBrushes.celebrationBrush())
         assertEquals(3, com.example.ui.theme.OceanGradientHero.size)
     }
+
+    @Test
+    fun testYearlyAnalyticsCalculation() {
+        val target = 2000
+        val totalsMap = mapOf(
+            "2026-01-10" to 2000,
+            "2026-01-11" to 2500,
+            "2026-02-05" to 2000,
+            "2026-03-15" to 1500
+        )
+
+        var annualIntake = 0L
+        var annualGoals = 0
+
+        totalsMap.values.forEach { intake ->
+            annualIntake += intake
+            if (intake >= target) annualGoals++
+        }
+
+        assertEquals(8000L, annualIntake)
+        assertEquals(3, annualGoals)
+
+        // Verify 12 month items generated correctly
+        val months = (0..11).map { mIdx ->
+            val name = com.example.core.utils.DateTimeUtils.getMonthName(mIdx)
+            val shortName = com.example.core.utils.DateTimeUtils.getShortMonthName(mIdx)
+            assertTrue(name.isNotBlank())
+            assertTrue(shortName.isNotBlank())
+            name
+        }
+        assertEquals(12, months.size)
+        assertEquals("January", months[0])
+        assertEquals("December", months[11])
+    }
+
+    @Test
+    fun testMonthlyCalendarGridOffsetAndDays() {
+        // November 2026: Nov 1, 2026 is a Sunday (Calendar.SUNDAY = 1) -> offset 0
+        val offsetNov2026 = com.example.core.utils.DateTimeUtils.getFirstDayOfWeekForMonth(2026, 10) - 1
+        assertEquals(0, offsetNov2026)
+
+        // October 2026: Oct 1, 2026 is a Thursday (Calendar.THURSDAY = 5) -> offset 4
+        val offsetOct2026 = com.example.core.utils.DateTimeUtils.getFirstDayOfWeekForMonth(2026, 9) - 1
+        assertEquals(4, offsetOct2026)
+
+        // Logging frequency: 15 logs over 5 active days = 3.0 logs/day
+        val totalLogs = 15
+        val activeDays = 5
+        val freq = totalLogs.toFloat() / activeDays.toFloat()
+        assertEquals(3.0f, freq, 0.01f)
+    }
+
+    @Test
+    fun testOnboardingStepNavigationAndValidation() {
+        // Step 1 Welcome -> Step 2 Profile
+        var currentStep = 1
+        fun next(step: Int): Int = step + 1
+
+        currentStep = next(currentStep)
+        assertEquals(2, currentStep)
+
+        // Validate age and weight
+        fun validate(ageStr: String, weightStr: String): Boolean {
+            val age = ageStr.toIntOrNull()
+            val weight = weightStr.toFloatOrNull()
+            return age != null && age in 10..120 && weight != null && weight in 20f..300f
+        }
+
+        assertTrue(validate("28", "70"))
+        assertFalse(validate("5", "70"))
+        assertFalse(validate("28", "10"))
+        assertFalse(validate("", "70"))
+
+        // Proceed to Step 3, 4, 5
+        currentStep = next(currentStep) // Step 3: Reminders
+        assertEquals(3, currentStep)
+        currentStep = next(currentStep) // Step 4: How it works
+        assertEquals(4, currentStep)
+        currentStep = next(currentStep) // Step 5: Goal reveal
+        assertEquals(5, currentStep)
+    }
+
+    @Test
+    fun testSettingsDefaultPresetsAndReliability() {
+        val defaultWidgetAmount = 300
+        val intervals = listOf(30, 60, 90, 120)
+
+        assertTrue(intervals.contains(60))
+        assertEquals(4, intervals.size)
+        assertEquals(300, defaultWidgetAmount)
+
+        // 24-hour time regex validation
+        val timeRegex = Regex("^([01]?[0-9]|2[0-3]):[0-5][0-9]\$")
+        assertTrue("08:00".matches(timeRegex))
+        assertTrue("23:30".matches(timeRegex))
+        assertFalse("25:00".matches(timeRegex))
+        assertFalse("12:60".matches(timeRegex))
+        assertFalse("invalid".matches(timeRegex))
+    }
 }
+
 

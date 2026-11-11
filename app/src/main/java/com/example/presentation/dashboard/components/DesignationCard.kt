@@ -1,5 +1,6 @@
 package com.example.presentation.dashboard.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,11 +10,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,10 +37,16 @@ import androidx.compose.ui.unit.sp
 import com.example.core.ui.components.WaterCard
 import com.example.domain.gamification.DesignationCategory
 import com.example.domain.gamification.GamificationState
+import com.example.ui.theme.OceanAqua
+import com.example.ui.theme.OceanBrushes
+import com.example.ui.theme.OceanCyan
+import com.example.ui.theme.OceanDeep
+import com.example.ui.theme.OceanGold
 import com.example.ui.theme.WaterAccentSuccess
 import com.example.ui.theme.WaterOutline
 import com.example.ui.theme.WaterPrimary
 import com.example.ui.theme.WaterPrimaryContainer
+import com.example.ui.theme.WaterSurface
 import com.example.ui.theme.WaterTextPrimary
 import com.example.ui.theme.WaterTextSecondary
 
@@ -44,15 +60,15 @@ fun DesignationCard(
 
     val badgeColor = when {
         isDisaster -> Color(0xFFC04E26)
-        state.currentDesignationCategory == DesignationCategory.MONTHLY_DESIGNATION -> Color(0xFF1B5E20)
-        state.currentDesignationCategory == DesignationCategory.OCEAN_LEGEND -> WaterPrimary
+        state.currentDesignationCategory == DesignationCategory.MONTHLY_DESIGNATION -> OceanGold
+        state.currentDesignationCategory == DesignationCategory.OCEAN_LEGEND -> OceanAqua
         else -> WaterTextSecondary
     }
 
     val badgeBg = when {
         isDisaster -> Color(0xFFFBE9E7)
-        state.currentDesignationCategory == DesignationCategory.MONTHLY_DESIGNATION -> Color(0xFFE8F5E9)
-        state.currentDesignationCategory == DesignationCategory.OCEAN_LEGEND -> WaterPrimaryContainer
+        state.currentDesignationCategory == DesignationCategory.MONTHLY_DESIGNATION -> OceanGold.copy(alpha = 0.15f)
+        state.currentDesignationCategory == DesignationCategory.OCEAN_LEGEND -> OceanAqua.copy(alpha = 0.15f)
         else -> Color(0xFFEAEFF2)
     }
 
@@ -65,7 +81,7 @@ fun DesignationCard(
 
     WaterCard(
         testTag = "dashboard_designation_card",
-        contentPadding = 16.dp,
+        contentPadding = 18.dp,
         modifier = modifier
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -75,21 +91,32 @@ fun DesignationCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(badgeBg)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = badgeBg,
+                    border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.35f))
                 ) {
-                    Text(
-                        text = badgeText,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = badgeColor,
-                            letterSpacing = 0.5.sp,
-                            fontSize = 11.sp
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isDisaster) Icons.Default.WarningAmber else if (state.currentDesignationCategory == DesignationCategory.MONTHLY_DESIGNATION) Icons.Default.EmojiEvents else Icons.Default.WaterDrop,
+                            contentDescription = null,
+                            tint = badgeColor,
+                            modifier = Modifier.size(13.dp)
                         )
-                    )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = badgeText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = badgeColor,
+                                letterSpacing = 0.6.sp,
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
                 }
 
                 // Current streak label
@@ -99,18 +126,31 @@ fun DesignationCard(
                     else -> "Day 1 in progress"
                 }
 
-                Text(
-                    text = streakLabel,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isDisaster) Color(0xFFC04E26) else WaterPrimary,
-                        fontSize = 12.sp
-                    ),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.testTag("designation_streak_text")
-                )
+                ) {
+                    if (!isDisaster && state.overallStreak > 0) {
+                        Icon(
+                            imageVector = Icons.Default.LocalFireDepartment,
+                            contentDescription = null,
+                            tint = OceanGold,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                    }
+                    Text(
+                        text = streakLabel,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDisaster) Color(0xFFC04E26) else OceanAqua,
+                            fontSize = 12.sp
+                        )
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // 2. Current Designation Title
             Text(
@@ -136,7 +176,7 @@ fun DesignationCard(
                 modifier = Modifier.testTag("designation_description_text")
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // 3. Monthly Badge Collection Status (e.g. 6/10 badges)
             Row(
@@ -149,7 +189,7 @@ fun DesignationCard(
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold,
                         color = WaterTextPrimary,
-                        fontSize = 12.sp
+                        fontSize = 13.sp
                     )
                 )
 
@@ -157,7 +197,7 @@ fun DesignationCard(
                     text = "${state.currentMonthBadgeCount}/10 badges",
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        color = if (state.isCurrentMonthCompleted) WaterAccentSuccess else WaterPrimary,
+                        color = if (state.isCurrentMonthCompleted) WaterAccentSuccess else OceanAqua,
                         fontSize = 12.sp
                     ),
                     modifier = Modifier.testTag("monthly_badge_count_text")
@@ -210,7 +250,7 @@ fun DesignationCard(
                         .height(6.dp)
                         .clip(CircleShape)
                         .testTag("designation_progress_bar"),
-                    color = if (isDisaster) Color(0xFFC04E26) else if (state.isCurrentMonthCompleted) WaterAccentSuccess else WaterPrimary,
+                    color = if (isDisaster) Color(0xFFC04E26) else if (state.isCurrentMonthCompleted) WaterAccentSuccess else OceanAqua,
                     trackColor = WaterOutline.copy(alpha = 0.4f)
                 )
             }
@@ -233,7 +273,7 @@ fun DesignationCard(
                 )
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             HorizontalDivider(color = WaterOutline.copy(alpha = 0.35f))
             Spacer(modifier = Modifier.height(10.dp))
 

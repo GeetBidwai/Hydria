@@ -11,6 +11,7 @@ import com.example.domain.model.UserProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -23,6 +24,8 @@ data class OnboardingUiState(
     val exerciseMinutes: String = "30",
     val preferredUnit: String = "ml", // "ml" or "litres"
     val remindersEnabled: Boolean = true,
+    val reminderIntervalMinutes: Int = 60,
+    val reminderWeekendsEnabled: Boolean = true,
     val wakeTime: String = "07:00",
     val sleepTime: String = "23:00",
     val ageError: String? = null,
@@ -44,10 +47,11 @@ class OnboardingViewModel(
         // Load initial profile if exists
         viewModelScope.launch {
             repository.userProfile.collect { profile ->
-                // Recalculate target
                 val target = HydrationCalculator.calculateDailyTargetMl(profile)
+                val interval = try { repository.reminderIntervalMinutes.first() } catch (_: Exception) { 60 }
+                val weekends = try { repository.reminderWeekendsEnabled.first() } catch (_: Exception) { true }
+
                 _uiState.update { current ->
-                    // Only update if not yet edited by user
                     if (current.currentStep == 1 && !current.isSaving) {
                         current.copy(
                             name = profile.name,
@@ -57,6 +61,8 @@ class OnboardingViewModel(
                             exerciseMinutes = profile.exerciseMinutes.toString(),
                             preferredUnit = profile.preferredUnit,
                             remindersEnabled = profile.remindersEnabled,
+                            reminderIntervalMinutes = interval,
+                            reminderWeekendsEnabled = weekends,
                             wakeTime = profile.wakeTime,
                             sleepTime = profile.sleepTime,
                             calculatedTargetMl = target
@@ -89,7 +95,6 @@ class OnboardingViewModel(
     }
 
     fun updateWeight(weightStr: String) {
-        // Allow digits and up to one decimal point
         val sanitized = weightStr.filter { it.isDigit() || it == '.' }
         _uiState.update {
             it.copy(
@@ -122,6 +127,14 @@ class OnboardingViewModel(
 
     fun updateRemindersEnabled(enabled: Boolean) {
         _uiState.update { it.copy(remindersEnabled = enabled) }
+    }
+
+    fun updateReminderIntervalMinutes(minutes: Int) {
+        _uiState.update { it.copy(reminderIntervalMinutes = minutes) }
+    }
+
+    fun updateReminderWeekendsEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(reminderWeekendsEnabled = enabled) }
     }
 
     fun updateWakeTime(time: String) {
@@ -190,18 +203,15 @@ class OnboardingViewModel(
                 return true
             }
             2 -> {
-                if (validatePersonalInfo()) {
+                if (validatePersonalInfo() && validateActivityInfo()) {
                     _uiState.update { it.copy(currentStep = 3) }
                     return true
                 }
                 return false
             }
             3 -> {
-                if (validateActivityInfo()) {
-                    _uiState.update { it.copy(currentStep = 4) }
-                    return true
-                }
-                return false
+                _uiState.update { it.copy(currentStep = 4) }
+                return true
             }
             4 -> {
                 _uiState.update { it.copy(currentStep = 5) }
@@ -250,6 +260,11 @@ class OnboardingViewModel(
 
             // Save profile and calculated target without wiping water intake history
             repository.saveProfile(profile, calculatedTargetMl = state.calculatedTargetMl)
+            repository.setRemindersEnabled(state.remindersEnabled)
+            repository.setReminderIntervalMinutes(state.reminderIntervalMinutes)
+            repository.setReminderWeekendsEnabled(state.reminderWeekendsEnabled)
+            repository.setWakingHours(state.wakeTime, state.sleepTime)
+            repository.setPreferredUnit(state.preferredUnit)
             repository.setOnboardingCompleted(true)
 
             _uiState.update { it.copy(isSaving = false) }

@@ -2,7 +2,11 @@ package com.example.core.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -16,7 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
@@ -24,11 +31,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.OceanAqua
+import com.example.ui.theme.OceanCyan
+import com.example.ui.theme.OceanDeep
+import com.example.ui.theme.OceanFoam
+import com.example.ui.theme.OceanGold
 import com.example.ui.theme.WaterAccentSuccess
 import com.example.ui.theme.WaterOutline
 import com.example.ui.theme.WaterPrimary
 import com.example.ui.theme.WaterTextPrimary
 import com.example.ui.theme.WaterTextSecondary
+import kotlin.math.sin
 
 @Composable
 fun WaterCircularProgress(
@@ -56,10 +69,16 @@ fun WaterCircularProgress(
         label = "water_progress_anim"
     )
 
-    val progressColor by animateColorAsState(
-        targetValue = if (isTargetReached) WaterAccentSuccess else WaterPrimary,
-        animationSpec = tween(durationMillis = 500),
-        label = "water_color_anim"
+    // Gentle wave animation inside progress circle
+    val infiniteTransition = rememberInfiniteTransition(label = "wave_motion")
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * Math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "wave_phase"
     )
 
     Box(
@@ -73,7 +92,7 @@ fun WaterCircularProgress(
             val radius = (this.size.minDimension - stroke) / 2
             val center = this.center
 
-            // Background Track
+            // 1. Background Track
             drawCircle(
                 color = WaterOutline.copy(alpha = 0.35f),
                 radius = radius,
@@ -81,9 +100,61 @@ fun WaterCircularProgress(
                 style = Stroke(width = stroke, cap = StrokeCap.Round)
             )
 
-            // Progress Arc
+            // 2. Inner Water Fill Wave (Subtle ambient water level inside circle)
+            if (animatedProgress > 0.02f) {
+                val innerRadius = radius - stroke / 2f
+                val waterLevelY = center.y + innerRadius - (2f * innerRadius * animatedProgress)
+
+                val wavePath = Path().apply {
+                    val startX = center.x - innerRadius
+                    val endX = center.x + innerRadius
+                    moveTo(startX, center.y + innerRadius)
+
+                    var x = startX
+                    while (x <= endX) {
+                        val relativeX = (x - startX) / (innerRadius * 2f)
+                        val waveOffset = sin(relativeX * 2.5f * Math.PI + wavePhase).toFloat() * 6f
+                        val y = (waterLevelY + waveOffset).coerceIn(center.y - innerRadius, center.y + innerRadius)
+                        lineTo(x, y)
+                        x += 4f
+                    }
+                    lineTo(endX, center.y + innerRadius)
+                    close()
+                }
+
+                // Clip wave within circular bounds
+                val circleClip = Path().apply {
+                    addOval(androidx.compose.ui.geometry.Rect(center, innerRadius))
+                }
+                drawPath(
+                    path = wavePath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            OceanCyan.copy(alpha = 0.20f),
+                            OceanAqua.copy(alpha = 0.32f),
+                            OceanDeep.copy(alpha = 0.40f)
+                        ),
+                        startY = center.y - innerRadius,
+                        endY = center.y + innerRadius
+                    )
+                )
+            }
+
+            // 3. Progress Arc with Vibrant Ocean Gradient
+            val progressBrush = if (isTargetReached) {
+                Brush.sweepGradient(
+                    colors = listOf(OceanAqua, OceanCyan, WaterAccentSuccess, OceanGold, OceanAqua),
+                    center = center
+                )
+            } else {
+                Brush.sweepGradient(
+                    colors = listOf(OceanCyan, OceanAqua, WaterPrimary, OceanDeep, OceanCyan),
+                    center = center
+                )
+            }
+
             drawArc(
-                color = progressColor,
+                brush = progressBrush,
                 startAngle = -90f,
                 sweepAngle = 360f * animatedProgress,
                 useCenter = false,
@@ -91,7 +162,7 @@ fun WaterCircularProgress(
             )
         }
 
-        // Center Text
+        // Center Typography
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -126,3 +197,4 @@ fun WaterCircularProgress(
         }
     }
 }
+

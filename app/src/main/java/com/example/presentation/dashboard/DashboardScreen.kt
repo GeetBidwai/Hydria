@@ -16,16 +16,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.LocalDrink
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -58,12 +55,21 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.core.constants.AppConstants
 import com.example.core.ui.components.WaterCard
 import com.example.core.ui.components.WaterCircularProgress
 import com.example.core.utils.DateTimeUtils
 import com.example.data.local.WaterEntry
+import com.example.presentation.components.HydriaMascot
+import com.example.presentation.components.HydriaMascotHelper
+import com.example.presentation.components.HydriaMascotMood
+import com.example.presentation.components.HydriaMascotSpeechCard
+import com.example.presentation.components.OceanWaveCard
 import com.example.presentation.dashboard.components.DesignationCard
+import com.example.ui.theme.OceanAqua
+import com.example.ui.theme.OceanBrushes
+import com.example.ui.theme.OceanCyan
+import com.example.ui.theme.OceanDeep
+import com.example.ui.theme.OceanGold
 import com.example.ui.theme.WaterAccentSuccess
 import com.example.ui.theme.WaterBackground
 import com.example.ui.theme.WaterOutline
@@ -72,6 +78,7 @@ import com.example.ui.theme.WaterPrimaryContainer
 import com.example.ui.theme.WaterSurface
 import com.example.ui.theme.WaterTextPrimary
 import com.example.ui.theme.WaterTextSecondary
+import java.util.Locale
 
 @Composable
 fun DashboardScreen(
@@ -81,6 +88,17 @@ fun DashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Dynamic Mascot Mood Resolution based on intake and gamification state
+    val isDisaster = uiState.gamificationState.isDisasterPath
+    val isRecovery = uiState.isGoalAchieved && isDisaster
+    val mascotMood = HydriaMascotHelper.resolveMood(
+        consumedMl = uiState.consumedMl,
+        targetMl = uiState.dailyTargetMl,
+        isDisaster = isDisaster,
+        isRecovery = isRecovery
+    )
+    val companionMessage = HydriaMascotHelper.getCompanionMessage(mascotMood)
 
     // Display Undo Snackbar when an entry is deleted
     LaunchedEffect(uiState.showUndoSnackbar, uiState.lastDeletedEntry) {
@@ -103,9 +121,9 @@ fun DashboardScreen(
             SnackbarHost(hostState = snackbarHostState) { data ->
                 Snackbar(
                     snackbarData = data,
-                    containerColor = WaterTextPrimary,
+                    containerColor = OceanDeep,
                     contentColor = WaterSurface,
-                    actionColor = WaterPrimary
+                    actionColor = OceanCyan
                 )
             }
         },
@@ -121,7 +139,7 @@ fun DashboardScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header: Greeting, Date, and Calculator Quick Action
+            // 1. Header: Greeting, Date, and Calculator Quick Action
             item {
                 Row(
                     modifier = Modifier
@@ -155,29 +173,41 @@ fun DashboardScreen(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(CircleShape)
-                            .background(WaterPrimaryContainer)
+                            .background(OceanAqua.copy(alpha = 0.12f))
                             .testTag("dashboard_calculator_btn")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Calculate,
                             contentDescription = "Open Hydration Calculator",
-                            tint = WaterPrimary
+                            tint = OceanAqua
                         )
                     }
                 }
             }
 
-            // Circular Hydration Progress Hero Card
+            // 2. Mascot Companion Speech Bubble Section
             item {
-                WaterCard(
+                HydriaMascotSpeechCard(
+                    mood = mascotMood,
+                    customMessage = companionMessage,
+                    modifier = Modifier.testTag("mascot_companion_card")
+                )
+            }
+
+            // 3. Hero Hydration Progress Card (Circular Indicator with animated wave fill)
+            item {
+                OceanWaveCard(
                     testTag = "dashboard_progress_card",
-                    contentPadding = 24.dp
+                    contentPadding = 22.dp
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        val subtitleFormatted = "${viewModel.formatVolume(uiState.consumedMl, uiState.preferredUnit)} / ${viewModel.formatVolume(uiState.dailyTargetMl, uiState.preferredUnit)}"
+                        // Consumed / Target display
+                        val consumedLiters = String.format(Locale.getDefault(), "%.2f L", uiState.consumedMl / 1000f)
+                        val targetLiters = String.format(Locale.getDefault(), "%.2f L", uiState.dailyTargetMl / 1000f)
+                        val subtitleFormatted = "${uiState.consumedMl} ml / ${uiState.dailyTargetMl} ml ($consumedLiters / $targetLiters)"
 
                         WaterCircularProgress(
                             currentMl = uiState.consumedMl,
@@ -189,25 +219,26 @@ fun DashboardScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Stats Row: Consumed & Remaining
+                        // Stats Row: Consumed & Remaining with Litres
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             StatItem(
                                 label = "Consumed",
-                                value = viewModel.formatVolume(uiState.consumedMl, uiState.preferredUnit),
-                                color = WaterPrimary
+                                value = "${uiState.consumedMl} ml ($consumedLiters)",
+                                color = OceanAqua
                             )
                             Box(
                                 modifier = Modifier
                                     .width(1.dp)
-                                    .height(36.dp)
-                                    .background(WaterOutline)
+                                    .height(38.dp)
+                                    .background(WaterOutline.copy(alpha = 0.5f))
                             )
+                            val remainingLiters = String.format(Locale.getDefault(), "%.2f L", uiState.remainingMl / 1000f)
                             StatItem(
                                 label = "Remaining",
-                                value = viewModel.formatVolume(uiState.remainingMl, uiState.preferredUnit),
+                                value = if (uiState.remainingMl == 0) "Goal Reached! 🎉" else "${uiState.remainingMl} ml ($remainingLiters)",
                                 color = if (uiState.remainingMl == 0) WaterAccentSuccess else WaterTextSecondary
                             )
                         }
@@ -215,7 +246,7 @@ fun DashboardScreen(
                 }
             }
 
-            // Hydration Designation & Streak Card
+            // 4. Hydration Designation & Gamification Card
             item {
                 DesignationCard(
                     state = uiState.gamificationState,
@@ -223,38 +254,89 @@ fun DashboardScreen(
                 )
             }
 
-            // Quick Add Section
+            // 5. Quick Add Hydration Controls (+150, +250, +300, +500, Custom)
             item {
                 Column {
-                    Text(
-                        text = "QUICK ADD",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = WaterTextSecondary,
-                            letterSpacing = 1.sp
-                        ),
-                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 4.dp, bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "QUICK ADD",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = WaterTextSecondary,
+                                letterSpacing = 1.sp
+                            )
+                        )
+
+                        Text(
+                            text = "TAP TO LOG",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = OceanAqua,
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        AppConstants.QUICK_ADD_AMOUNTS.forEach { amount ->
+                        // Exactly 4 presets + custom
+                        val presets = listOf(150, 250, 300, 500)
+                        presets.forEach { amount ->
                             QuickAddChip(
                                 amountMl = amount,
                                 onClick = { viewModel.logQuickAdd(amount) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                        // Custom Amount Chip
+                        Surface(
+                            onClick = { viewModel.showCustomAmountDialog() },
+                            shape = RoundedCornerShape(12.dp),
+                            color = OceanAqua.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, OceanAqua.copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .testTag("quick_add_custom")
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Custom amount",
+                                    tint = OceanAqua,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Custom",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = OceanAqua,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    )
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // Today's Intake History Section
+            // 6. Recent Intake Activity
             item {
                 WaterCard(
-                    testTag = "dashboard_recent_card"
+                    testTag = "dashboard_recent_card",
+                    contentPadding = 18.dp
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -262,9 +344,9 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Today's Log",
+                            text = "Today's Activity",
                             style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = FontWeight.Bold,
                                 color = WaterTextPrimary
                             )
                         )
@@ -279,55 +361,45 @@ fun DashboardScreen(
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = null,
-                                tint = WaterPrimary,
+                                tint = OceanAqua,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(2.dp))
                             Text(
-                                text = "Custom",
+                                text = "Log Custom",
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    color = WaterPrimary,
+                                    color = OceanAqua,
                                     fontWeight = FontWeight.Bold
                                 )
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     if (uiState.todayEntries.isEmpty()) {
-                        // Clean empty state
+                        // Empty state with friendly mascot guidance
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 20.dp),
+                                .padding(vertical = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(WaterOutline.copy(alpha = 0.3f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocalDrink,
-                                    contentDescription = null,
-                                    tint = WaterTextSecondary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
+                            HydriaMascot(
+                                mood = HydriaMascotMood.CHEERFUL_START,
+                                size = 56.dp
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
                             Text(
                                 text = "No water logged yet today",
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Medium,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = WaterTextPrimary
                                 )
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Spacer(modifier = Modifier.height(3.dp))
                             Text(
-                                text = "Tap any quick-add button above to start!",
+                                text = "Tap any quick-add button above to start your tide!",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = WaterTextSecondary,
                                     fontSize = 12.sp
@@ -340,7 +412,7 @@ fun DashboardScreen(
                             uiState.todayEntries.forEachIndexed { index, entry ->
                                 if (index > 0) {
                                     HorizontalDivider(
-                                        color = WaterOutline.copy(alpha = 0.4f),
+                                        color = WaterOutline.copy(alpha = 0.35f),
                                         modifier = Modifier.padding(vertical = 4.dp)
                                     )
                                 }
@@ -401,17 +473,17 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf(200, 300, 400).forEach { preset ->
+                        listOf(200, 350, 450).forEach { preset ->
                             Surface(
                                 onClick = { viewModel.updateCustomAmountInput(preset.toString()) },
                                 shape = RoundedCornerShape(8.dp),
-                                color = WaterPrimaryContainer,
+                                color = OceanAqua.copy(alpha = 0.12f),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(
                                     text = "$preset ml",
                                     style = MaterialTheme.typography.labelSmall.copy(
-                                        color = WaterPrimary,
+                                        color = OceanAqua,
                                         fontWeight = FontWeight.SemiBold
                                     ),
                                     textAlign = TextAlign.Center,
@@ -427,7 +499,7 @@ fun DashboardScreen(
                     onClick = { viewModel.submitCustomAmount() },
                     modifier = Modifier.testTag("submit_custom_amount_btn")
                 ) {
-                    Text("Add", color = WaterPrimary, fontWeight = FontWeight.Bold)
+                    Text("Add", color = OceanAqua, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -462,13 +534,13 @@ private fun IntakeEntryRow(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(WaterPrimaryContainer),
+                    .background(OceanAqua.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.WaterDrop,
                     contentDescription = null,
-                    tint = WaterPrimary,
+                    tint = OceanAqua,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -528,7 +600,7 @@ private fun StatItem(
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = color,
-                fontSize = 16.sp
+                fontSize = 15.sp
             )
         )
     }
@@ -544,7 +616,7 @@ private fun QuickAddChip(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
         color = WaterSurface,
-        border = BorderStroke(1.dp, WaterOutline.copy(alpha = 0.6f)),
+        border = BorderStroke(1.dp, OceanAqua.copy(alpha = 0.40f)),
         modifier = modifier
             .height(52.dp)
             .testTag("quick_add_$amountMl")
@@ -558,7 +630,7 @@ private fun QuickAddChip(
                 text = "+$amountMl",
                 style = MaterialTheme.typography.titleSmall.copy(
                     fontWeight = FontWeight.Bold,
-                    color = WaterPrimary,
+                    color = OceanAqua,
                     fontSize = 14.sp
                 )
             )
@@ -575,7 +647,7 @@ private fun QuickAddChip(
 
 @Composable
 private fun textFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = WaterPrimary,
+    focusedBorderColor = OceanAqua,
     unfocusedBorderColor = WaterOutline,
     focusedContainerColor = WaterSurface,
     unfocusedContainerColor = WaterSurface,
