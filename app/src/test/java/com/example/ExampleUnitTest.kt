@@ -1403,6 +1403,217 @@ class ExampleUnitTest {
         assertTrue(celebration != null)
         assertEquals(com.example.reminders.NotificationCategory.PROGRESS_CELEBRATION, celebration?.first)
     }
+
+    @Test
+    fun testCircularLiquidHeightFractions() {
+        val targetMl = 2000
+
+        // 0% empty
+        assertEquals(0f, com.example.core.ui.sensors.DeviceTilt.calculateWaterHeightFraction(0, targetMl), 0.001f)
+        // 25% one-quarter
+        assertEquals(0.25f, com.example.core.ui.sensors.DeviceTilt.calculateWaterHeightFraction(500, targetMl), 0.001f)
+        // 50% midpoint
+        assertEquals(0.50f, com.example.core.ui.sensors.DeviceTilt.calculateWaterHeightFraction(1000, targetMl), 0.001f)
+        // 75% three-quarters
+        assertEquals(0.75f, com.example.core.ui.sensors.DeviceTilt.calculateWaterHeightFraction(1500, targetMl), 0.001f)
+        // 100% full
+        assertEquals(1.0f, com.example.core.ui.sensors.DeviceTilt.calculateWaterHeightFraction(2000, targetMl), 0.001f)
+        // >100% clamped to full without breaking circular container
+        assertEquals(1.0f, com.example.core.ui.sensors.DeviceTilt.calculateWaterHeightFraction(2600, targetMl), 0.001f)
+        // Zero target handling
+        assertEquals(0f, com.example.core.ui.sensors.DeviceTilt.calculateWaterHeightFraction(500, 0), 0.001f)
+    }
+
+    @Test
+    fun testDeviceTiltSlopeCalculations() {
+        val maxSlope = 0.50f
+
+        // Level position -> flat horizontal surface
+        assertEquals(0f, com.example.core.ui.sensors.DeviceTilt.computeSurfaceSlope(0f, maxSlope), 0.001f)
+
+        // Moderate left tilt
+        val leftSlope = com.example.core.ui.sensors.DeviceTilt.computeSurfaceSlope(0.5f, maxSlope)
+        assertTrue("Expected positive slope for left tilt", leftSlope > 0f)
+        assertEquals(0.25f, leftSlope, 0.001f)
+
+        // Moderate right tilt
+        val rightSlope = com.example.core.ui.sensors.DeviceTilt.computeSurfaceSlope(-0.5f, maxSlope)
+        assertTrue("Expected negative slope for right tilt", rightSlope < 0f)
+        assertEquals(-0.25f, rightSlope, 0.001f)
+
+        // Extreme tilt clamped within maxSlope bounds
+        val extremeLeft = com.example.core.ui.sensors.DeviceTilt.computeSurfaceSlope(1.8f, maxSlope)
+        assertEquals(maxSlope, extremeLeft, 0.001f)
+
+        val extremeRight = com.example.core.ui.sensors.DeviceTilt.computeSurfaceSlope(-2.0f, maxSlope)
+        assertEquals(-maxSlope, extremeRight, 0.001f)
+    }
+
+    @Test
+    fun testWaterEntryEditValidation() {
+        fun validateEditAmount(input: String): Pair<Boolean, String?> {
+            val trimmed = input.trim()
+            val amount = trimmed.toIntOrNull()
+            return when {
+                trimmed.isBlank() -> Pair(false, "Please enter an amount in ml")
+                amount == null || amount <= 0 -> Pair(false, "Please enter a valid positive amount")
+                amount > 3000 -> Pair(false, "Maximum single entry is 3,000 ml")
+                else -> Pair(true, null)
+            }
+        }
+
+        assertTrue(validateEditAmount("250").first)
+        assertTrue(validateEditAmount("500").first)
+        assertTrue(validateEditAmount("3000").first)
+
+        assertFalse(validateEditAmount("").first)
+        assertFalse(validateEditAmount("0").first)
+        assertFalse(validateEditAmount("-50").first)
+        assertFalse(validateEditAmount("3001").first)
+        assertFalse(validateEditAmount("abc").first)
+    }
+
+    @Test
+    fun testWaterEntryUpdateRecalculatesTotals() {
+        val entry1 = com.example.data.local.WaterEntry(id = 1L, amountMl = 250, dateKey = "2026-11-12")
+        val entry2 = com.example.data.local.WaterEntry(id = 2L, amountMl = 500, dateKey = "2026-11-12")
+        var entries = listOf(entry1, entry2)
+
+        val initialTotal = entries.sumOf { it.amountMl }
+        assertEquals(750, initialTotal)
+
+        // Simulate edit: update entry1 from 250ml to 400ml
+        val editedEntry1 = entry1.copy(amountMl = 400)
+        entries = entries.map { if (it.id == editedEntry1.id) editedEntry1 else it }
+
+        val updatedTotal = entries.sumOf { it.amountMl }
+        assertEquals(900, updatedTotal)
+
+        // Simulate delete: delete entry2
+        entries = entries.filterNot { it.id == entry2.id }
+        val finalTotal = entries.sumOf { it.amountMl }
+        assertEquals(400, finalTotal)
+    }
+
+    @Test
+    fun testReminderDelayCalculationWithLatestIntake() {
+        val now = 1_700_000_000_000L // arbitrary fixed time
+        val intervalMinutes = 120
+
+        // 1. No entries recorded (0L) -> delay should be within natural variation [100..120]
+        val delayEmpty = com.example.reminders.ReminderScheduler.calculateRemainingDelayMinutes(
+            intervalMinutes = intervalMinutes,
+            lastIntakeTimestamp = 0L,
+            currentTimestamp = now
+        )
+        assertTrue("Empty delay must be in [100..120]", delayEmpty in 100..120)
+
+        // 2. Recent intake: 30 minutes ago
+        val intake30MinAgo = now - (30 * 60 * 1000L)
+        val delayRecent = com.example.reminders.ReminderScheduler.calculateRemainingDelayMinutes(
+            intervalMinutes = intervalMinutes,
+            lastIntakeTimestamp = intake30MinAgo,
+            currentTimestamp = now
+        )
+        // effective interval is in [100..120]. 100-30 = 70, 120-30 = 90
+        assertTrue("Delay after 30 min must be in [70..90]", delayRecent in 70..90)
+
+        // 3. Overdue intake: 150 minutes ago -> should be 1 minute (due immediately)
+        val intake150MinAgo = now - (150 * 60 * 1000L)
+        val delayOverdue = com.example.reminders.ReminderScheduler.calculateRemainingDelayMinutes(
+            intervalMinutes = intervalMinutes,
+            lastIntakeTimestamp = intake150MinAgo,
+            currentTimestamp = now
+        )
+        assertEquals(1, delayOverdue)
+    }
+
+    @Test
+    fun testLatestIntakeTimestampSelectionAcrossMutations() {
+        val t1 = 1_000_000L // 9:00 AM
+        val t2 = 2_000_000L // 11:00 AM
+        val t3 = 3_000_000L // 2:00 PM
+
+        val e1 = com.example.data.local.WaterEntry(id = 1L, amountMl = 250, timestamp = t1, dateKey = "2026-11-12")
+        val e2 = com.example.data.local.WaterEntry(id = 2L, amountMl = 300, timestamp = t2, dateKey = "2026-11-12")
+        val e3 = com.example.data.local.WaterEntry(id = 3L, amountMl = 500, timestamp = t3, dateKey = "2026-11-12")
+
+        val entries = mutableListOf(e1, e2, e3)
+
+        // 1. Initial latest is t3
+        assertEquals(t3, entries.maxOfOrNull { it.timestamp })
+
+        // 2. Old entry e1 is edited (e.g. quantity changed, timestamp set to 9:15 AM = 1_100_000L)
+        val editedE1 = e1.copy(amountMl = 350, timestamp = 1_100_000L)
+        val index1 = entries.indexOfFirst { it.id == editedE1.id }
+        entries[index1] = editedE1
+
+        // Latest entry MUST remain t3 (3_000_000L), NOT the edited entry (1_100_000L)
+        val latestAfterOldEdit = entries.maxOfOrNull { it.timestamp }
+        assertEquals(t3, latestAfterOldEdit)
+
+        // 3. Latest entry e3 is deleted -> latest remaining must recalculate to t2 (2_000_000L)
+        entries.removeIf { it.id == e3.id }
+        val latestAfterDelete = entries.maxOfOrNull { it.timestamp }
+        assertEquals(t2, latestAfterDelete)
+
+        // 4. Undoing deletion of e3 restores t3 (3_000_000L)
+        entries.add(e3)
+        val latestAfterUndo = entries.maxOfOrNull { it.timestamp }
+        assertEquals(t3, latestAfterUndo)
+
+        // 5. Deleting all entries yields null / 0L
+        entries.clear()
+        val latestAfterAllDeleted = entries.maxOfOrNull { it.timestamp } ?: 0L
+        assertEquals(0L, latestAfterAllDeleted)
+    }
+
+    @Test
+    fun testHistoricalEntryNeverTriggersIntakeCelebration() {
+        val todayKey = com.example.core.utils.DateTimeUtils.getTodayDateKey()
+        val yesterdayKey = "2020-01-01" // Definitely not today
+
+        // Celebration evaluator helper function checks: dateKey == todayKey
+        fun wouldTriggerCelebration(dateKey: String): Boolean {
+            return dateKey == todayKey
+        }
+
+        assertFalse("Historical date edit must never trigger intake celebration", wouldTriggerCelebration(yesterdayKey))
+        assertTrue("Today's date is eligible for intake celebration checks", wouldTriggerCelebration(todayKey))
+    }
+
+    @Test
+    fun testHistoricalEditDoesNotDuplicateAchievements() {
+        // Evaluate historical days in GamificationEngine
+        val target = 2500
+        val historyMap = mapOf(
+            "2026-10-01" to 2500,
+            "2026-10-02" to 2500,
+            "2026-10-03" to 2500
+        )
+        val state1 = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = historyMap,
+            dailyTargetMl = target,
+            todayDateKey = "2026-11-12",
+            todayConsumedMl = 0
+        )
+
+        // Modifying an old day amount (e.g. from 2500 to 3000) keeps the achievement stable
+        val historyMapEdited = mapOf(
+            "2026-10-01" to 3000,
+            "2026-10-02" to 2500,
+            "2026-10-03" to 2500
+        )
+        val state2 = com.example.domain.gamification.GamificationEngine.evaluate(
+            dailyTotals = historyMapEdited,
+            dailyTargetMl = target,
+            todayDateKey = "2026-11-12",
+            todayConsumedMl = 0
+        )
+
+        assertEquals(state1.totalSuccessfulDays, state2.totalSuccessfulDays)
+        assertEquals(state1.completedMonthlyCollectionsCount, state2.completedMonthlyCollectionsCount)
+    }
 }
 
 

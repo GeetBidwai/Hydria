@@ -56,7 +56,10 @@ class WaterReminderWorker(
         val minIntervalMinutes = ReminderScheduler.getMinIntervalMinutes(intervalMinutes)
         val lastIntakePref = preferences.lastIntakeTimestamp.first()
         val latestDbIntake = try { database.waterEntryDao().getLatestEntryTimestamp() ?: 0L } catch (_: Exception) { 0L }
-        val effectiveLastIntake = maxOf(lastIntakePref, latestDbIntake)
+        val effectiveLastIntake = if (latestDbIntake > 0L) latestDbIntake else 0L
+        if (effectiveLastIntake != lastIntakePref) {
+            preferences.setLastIntakeTimestamp(effectiveLastIntake)
+        }
 
         if (effectiveLastIntake > 0) {
             val elapsedMillis = System.currentTimeMillis() - effectiveLastIntake
@@ -64,7 +67,7 @@ class WaterReminderWorker(
             if (elapsedMillis < minIntervalMillis) {
                 // Water was consumed recently; suppress notification and reschedule for remaining delay
                 val remainingMillis = minIntervalMillis - elapsedMillis
-                val remainingMinutes = ((remainingMillis / (60 * 1000L)).toInt()).coerceAtLeast(15)
+                val remainingMinutes = ((remainingMillis / (60 * 1000L)).toInt()).coerceAtLeast(1)
                 ReminderScheduler.scheduleReminders(context, intervalMinutes, remainingMinutes)
                 return Result.success()
             }

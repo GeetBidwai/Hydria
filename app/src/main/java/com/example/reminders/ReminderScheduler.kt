@@ -76,6 +76,55 @@ object ReminderScheduler {
     }
 
     /**
+     * Calculates the remaining delay in minutes until the next reminder should fire,
+     * given the configured interval and the latest recorded water intake timestamp.
+     *
+     * - If [lastIntakeTimestamp] <= 0L (no entries exist or history cleared):
+     *   returns a natural variation delay for the full interval (e.g. 100..120 min for 120m).
+     * - If [lastIntakeTimestamp] > 0L:
+     *   calculates elapsed minutes since that intake.
+     *   If elapsed minutes >= effectiveInterval, the reminder is due immediately (returns 1 min).
+     *   Otherwise, returns (effectiveInterval - elapsed).coerceAtLeast(1).
+     */
+    fun calculateRemainingDelayMinutes(
+        intervalMinutes: Int,
+        lastIntakeTimestamp: Long,
+        currentTimestamp: Long = System.currentTimeMillis()
+    ): Int {
+        val safeIntervalMinutes = intervalMinutes.coerceAtLeast(15)
+        val effectiveInterval = calculateEffectiveDelayMinutes(safeIntervalMinutes)
+
+        if (lastIntakeTimestamp <= 0L) {
+            return effectiveInterval
+        }
+
+        val elapsedMillis = (currentTimestamp - lastIntakeTimestamp).coerceAtLeast(0L)
+        val elapsedMinutes = (elapsedMillis / (60 * 1000L)).toInt()
+
+        return if (elapsedMinutes >= effectiveInterval) {
+            1
+        } else {
+            (effectiveInterval - elapsedMinutes).coerceAtLeast(1)
+        }
+    }
+
+    /**
+     * Reschedules reminders accounting for elapsed time since the latest actual water intake.
+     */
+    fun rescheduleWithLatestIntake(
+        context: Context,
+        intervalMinutes: Int = DEFAULT_INTERVAL_MINUTES,
+        lastIntakeTimestamp: Long = 0L
+    ) {
+        val safeIntervalMinutes = intervalMinutes.coerceAtLeast(15)
+        val delayMinutes = calculateRemainingDelayMinutes(
+            intervalMinutes = safeIntervalMinutes,
+            lastIntakeTimestamp = lastIntakeTimestamp
+        )
+        scheduleReminders(context, safeIntervalMinutes, delayMinutes)
+    }
+
+    /**
      * Reschedules the reminder schedule after the user logs water.
      * The next reminder will fire after a natural variation delay (e.g. 100–120 minutes for 120m).
      */

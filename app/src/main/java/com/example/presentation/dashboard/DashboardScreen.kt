@@ -19,16 +19,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import android.app.TimePickerDialog
+import android.text.format.DateFormat
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -44,7 +52,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import java.util.Calendar
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -423,7 +435,8 @@ fun DashboardScreen(
                                 IntakeEntryRow(
                                     entry = entry,
                                     formattedAmount = viewModel.formatVolume(entry.amountMl, uiState.preferredUnit),
-                                    onDelete = { viewModel.deleteEntry(entry) }
+                                    onEdit = { viewModel.showEditEntryDialog(entry) },
+                                    onDelete = { viewModel.requestDeleteEntry(entry) }
                                 )
                             }
                         }
@@ -514,14 +527,198 @@ fun DashboardScreen(
             containerColor = WaterSurface
         )
     }
+
+    // Edit Water Entry Dialog
+    val editingEntry = uiState.entryBeingEdited
+    if (uiState.isEditEntryDialogVisible && editingEntry != null) {
+        val context = LocalContext.current
+        val formattedTime = DateTimeUtils.formatTime(uiState.editTimeMillis)
+
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissEditEntryDialog() },
+            title = {
+                Text(
+                    text = "Edit Water Entry",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Update the quantity consumed in milliliters (ml):",
+                        style = MaterialTheme.typography.bodyMedium.copy(color = WaterTextSecondary)
+                    )
+
+                    OutlinedTextField(
+                        value = uiState.editAmountInput,
+                        onValueChange = viewModel::updateEditAmountInput,
+                        placeholder = { Text("e.g. 250") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = uiState.editAmountError != null,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = textFieldColors(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("edit_amount_input")
+                    )
+
+                    if (uiState.editAmountError != null) {
+                        Text(
+                            text = uiState.editAmountError ?: "",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
+                        )
+                    }
+
+                    // Quick quantity adjustment chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(150, 250, 500, 750).forEach { preset ->
+                            Surface(
+                                onClick = { viewModel.updateEditAmountInput(preset.toString()) },
+                                shape = RoundedCornerShape(8.dp),
+                                color = OceanAqua.copy(alpha = 0.12f),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "$preset ml",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = OceanAqua,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = WaterOutline.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 4.dp))
+
+                    // Entry Time Editor Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Entry Time",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    color = WaterTextSecondary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+                            Text(
+                                text = formattedTime,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    color = WaterTextPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                val cal = Calendar.getInstance().apply { timeInMillis = uiState.editTimeMillis }
+                                TimePickerDialog(
+                                    context,
+                                    { _, hourOfDay, minute ->
+                                        val updatedCal = Calendar.getInstance().apply {
+                                            timeInMillis = uiState.editTimeMillis
+                                            set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                            set(Calendar.MINUTE, minute)
+                                            set(Calendar.SECOND, 0)
+                                        }
+                                        viewModel.updateEditTime(updatedCal.timeInMillis)
+                                    },
+                                    cal.get(Calendar.HOUR_OF_DAY),
+                                    cal.get(Calendar.MINUTE),
+                                    DateFormat.is24HourFormat(context)
+                                ).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("edit_time_picker_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccessTime,
+                                contentDescription = null,
+                                tint = OceanAqua,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Change Time", color = OceanAqua, fontSize = 13.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.submitEditEntry() },
+                    modifier = Modifier.testTag("save_edit_entry_btn")
+                ) {
+                    Text("Save", color = OceanAqua, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissEditEntryDialog() }) {
+                    Text("Cancel", color = WaterTextSecondary)
+                }
+            },
+            containerColor = WaterSurface
+        )
+    }
+
+    // Delete Confirmation Dialog
+    val pendingDelete = uiState.entryPendingDelete
+    if (uiState.isDeleteConfirmDialogVisible && pendingDelete != null) {
+        val formattedAmount = viewModel.formatVolume(pendingDelete.amountMl, uiState.preferredUnit)
+        val formattedTime = DateTimeUtils.formatTime(pendingDelete.timestamp)
+
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDeleteConfirmDialog() },
+            title = {
+                Text(
+                    text = "Delete Water Entry?",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to remove this +$formattedAmount entry recorded at $formattedTime? Today's intake and progress will update immediately.",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = WaterTextSecondary)
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.confirmDeleteEntry() },
+                    modifier = Modifier.testTag("confirm_delete_entry_btn")
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissDeleteConfirmDialog() }) {
+                    Text("Cancel", color = WaterTextSecondary)
+                }
+            },
+            containerColor = WaterSurface
+        )
+    }
 }
 
 @Composable
 private fun IntakeEntryRow(
     entry: WaterEntry,
     formattedAmount: String,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -568,18 +765,71 @@ private fun IntakeEntryRow(
             }
         }
 
-        IconButton(
-            onClick = onDelete,
-            modifier = Modifier
-                .size(48.dp)
-                .testTag("delete_entry_${entry.id}")
-        ) {
-            Icon(
-                imageVector = Icons.Default.DeleteOutline,
-                contentDescription = "Delete entry",
-                tint = WaterTextSecondary,
-                modifier = Modifier.size(18.dp)
-            )
+        Box {
+            IconButton(
+                onClick = { menuExpanded = true },
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("entry_menu_btn_${entry.id}")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "More options for entry",
+                    tint = WaterTextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+                modifier = Modifier
+                    .background(WaterSurface)
+                    .testTag("entry_dropdown_${entry.id}")
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "Edit",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = WaterTextPrimary)
+                        )
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        onEdit()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = OceanAqua,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    modifier = Modifier.testTag("menu_edit_${entry.id}")
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "Delete",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.error)
+                        )
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        onDelete()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    modifier = Modifier.testTag("menu_delete_${entry.id}")
+                )
+            }
         }
     }
 }

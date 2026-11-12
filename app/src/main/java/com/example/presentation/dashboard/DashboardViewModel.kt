@@ -30,6 +30,13 @@ data class DashboardUiState(
     val isCustomAmountDialogVisible: Boolean = false,
     val customAmountInput: String = "",
     val customAmountError: String? = null,
+    val isEditEntryDialogVisible: Boolean = false,
+    val entryBeingEdited: WaterEntry? = null,
+    val editAmountInput: String = "",
+    val editAmountError: String? = null,
+    val editTimeMillis: Long = 0L,
+    val isDeleteConfirmDialogVisible: Boolean = false,
+    val entryPendingDelete: WaterEntry? = null,
     val lastDeletedEntry: WaterEntry? = null,
     val showUndoSnackbar: Boolean = false,
     val snackbarMessage: String? = null,
@@ -54,6 +61,13 @@ class DashboardViewModel(
         val isCustomAmountDialogVisible: Boolean = false,
         val customAmountInput: String = "",
         val customAmountError: String? = null,
+        val isEditEntryDialogVisible: Boolean = false,
+        val entryBeingEdited: WaterEntry? = null,
+        val editAmountInput: String = "",
+        val editAmountError: String? = null,
+        val editTimeMillis: Long = 0L,
+        val isDeleteConfirmDialogVisible: Boolean = false,
+        val entryPendingDelete: WaterEntry? = null,
         val lastDeletedEntry: WaterEntry? = null,
         val showUndoSnackbar: Boolean = false,
         val snackbarMessage: String? = null
@@ -113,6 +127,13 @@ class DashboardViewModel(
             isCustomAmountDialogVisible = dialogState.isCustomAmountDialogVisible,
             customAmountInput = dialogState.customAmountInput,
             customAmountError = dialogState.customAmountError,
+            isEditEntryDialogVisible = dialogState.isEditEntryDialogVisible,
+            entryBeingEdited = dialogState.entryBeingEdited,
+            editAmountInput = dialogState.editAmountInput,
+            editAmountError = dialogState.editAmountError,
+            editTimeMillis = dialogState.editTimeMillis,
+            isDeleteConfirmDialogVisible = dialogState.isDeleteConfirmDialogVisible,
+            entryPendingDelete = dialogState.entryPendingDelete,
             lastDeletedEntry = dialogState.lastDeletedEntry,
             showUndoSnackbar = dialogState.showUndoSnackbar,
             snackbarMessage = dialogState.snackbarMessage,
@@ -197,6 +218,122 @@ class DashboardViewModel(
                 )
             }
         }
+    }
+
+    // --- Entry Edit Feature ---
+
+    fun showEditEntryDialog(entry: WaterEntry) {
+        _dialogState.update {
+            it.copy(
+                isEditEntryDialogVisible = true,
+                entryBeingEdited = entry,
+                editAmountInput = entry.amountMl.toString(),
+                editAmountError = null,
+                editTimeMillis = entry.timestamp
+            )
+        }
+    }
+
+    fun dismissEditEntryDialog() {
+        _dialogState.update {
+            it.copy(
+                isEditEntryDialogVisible = false,
+                entryBeingEdited = null,
+                editAmountInput = "",
+                editAmountError = null
+            )
+        }
+    }
+
+    fun updateEditAmountInput(input: String) {
+        val filtered = input.filter { it.isDigit() }.take(4)
+        _dialogState.update {
+            it.copy(
+                editAmountInput = filtered,
+                editAmountError = null
+            )
+        }
+    }
+
+    fun updateEditTime(timeMillis: Long) {
+        _dialogState.update {
+            it.copy(editTimeMillis = timeMillis)
+        }
+    }
+
+    fun submitEditEntry() {
+        val entry = _dialogState.value.entryBeingEdited ?: return
+        val input = _dialogState.value.editAmountInput.trim()
+        val amount = input.toIntOrNull()
+
+        when {
+            input.isBlank() -> {
+                _dialogState.update { it.copy(editAmountError = "Please enter an amount in ml") }
+                return
+            }
+            amount == null || amount <= 0 -> {
+                _dialogState.update { it.copy(editAmountError = "Please enter a valid positive amount") }
+                return
+            }
+            amount > 3000 -> {
+                _dialogState.update { it.copy(editAmountError = "Maximum single entry is 3,000 ml") }
+                return
+            }
+        }
+
+        val updatedTimestamp = _dialogState.value.editTimeMillis
+        val updatedDateKey = DateTimeUtils.formatDateKey(updatedTimestamp)
+        val updatedEntry = entry.copy(
+            amountMl = amount,
+            timestamp = updatedTimestamp,
+            dateKey = updatedDateKey
+        )
+
+        viewModelScope.launch {
+            repository.updateEntry(updatedEntry)
+            val formatted = formatVolume(amount, uiState.value.preferredUnit)
+            _dialogState.update {
+                it.copy(
+                    isEditEntryDialogVisible = false,
+                    entryBeingEdited = null,
+                    editAmountInput = "",
+                    editAmountError = null,
+                    showUndoSnackbar = false,
+                    snackbarMessage = "Updated to $formatted"
+                )
+            }
+        }
+    }
+
+    // --- Entry Delete & Confirmation Feature ---
+
+    fun requestDeleteEntry(entry: WaterEntry) {
+        _dialogState.update {
+            it.copy(
+                isDeleteConfirmDialogVisible = true,
+                entryPendingDelete = entry
+            )
+        }
+    }
+
+    fun dismissDeleteConfirmDialog() {
+        _dialogState.update {
+            it.copy(
+                isDeleteConfirmDialogVisible = false,
+                entryPendingDelete = null
+            )
+        }
+    }
+
+    fun confirmDeleteEntry() {
+        val entry = _dialogState.value.entryPendingDelete ?: return
+        _dialogState.update {
+            it.copy(
+                isDeleteConfirmDialogVisible = false,
+                entryPendingDelete = null
+            )
+        }
+        deleteEntry(entry)
     }
 
     fun deleteEntry(entry: WaterEntry) {

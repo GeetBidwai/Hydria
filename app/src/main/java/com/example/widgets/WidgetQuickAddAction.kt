@@ -51,14 +51,14 @@ class WidgetQuickAddAction : ActionCallback {
         )
         database.waterEntryDao().insertEntry(entry)
 
-        // Record intake timestamp and reset reminder schedule
+        val latestTimestamp = database.waterEntryDao().getLatestEntryTimestamp() ?: now
         val preferences = com.example.data.preferences.UserPreferencesDataStore(context)
-        preferences.setLastIntakeTimestamp(now)
+        preferences.setLastIntakeTimestamp(latestTimestamp)
         try {
             val enabled = preferences.remindersEnabled.first()
             if (enabled) {
                 val interval = preferences.reminderIntervalMinutes.first()
-                com.example.reminders.ReminderScheduler.rescheduleAfterIntake(context, interval)
+                com.example.reminders.ReminderScheduler.rescheduleWithLatestIntake(context, interval, latestTimestamp)
             }
         } catch (_: Exception) {}
 

@@ -64,13 +64,13 @@ class WaterRepository(
         preferencesDataStore.setLastIntakeTimestamp(timestamp)
     }
 
-    private suspend fun triggerIntakeReminderReset() {
+    private suspend fun triggerIntakeReminderReset(latestIntakeTimestamp: Long) {
         if (context == null) return
         try {
             val enabled = preferencesDataStore.remindersEnabled.first()
             if (enabled) {
                 val interval = preferencesDataStore.reminderIntervalMinutes.first()
-                ReminderScheduler.rescheduleAfterIntake(context, interval)
+                ReminderScheduler.rescheduleWithLatestIntake(context, interval, latestIntakeTimestamp)
             }
         } catch (_: Exception) {}
     }
@@ -116,9 +116,10 @@ class WaterRepository(
         )
         val id = waterEntryDao.insertEntry(entry)
         val newIntake = prevIntake + amountMl
-        preferencesDataStore.setLastIntakeTimestamp(now)
+        val latestTimestamp = waterEntryDao.getLatestEntryTimestamp() ?: now
+        preferencesDataStore.setLastIntakeTimestamp(latestTimestamp)
         triggerWidgetRefresh()
-        triggerIntakeReminderReset()
+        triggerIntakeReminderReset(latestTimestamp)
         checkAndPostIntakeCelebration(dateKey, prevIntake, newIntake)
         return id
     }
@@ -127,9 +128,10 @@ class WaterRepository(
         val prevIntake = try { waterEntryDao.getDailyIntakeMl(entry.dateKey).first() } catch (_: Exception) { 0 }
         val id = waterEntryDao.insertEntry(entry)
         val newIntake = prevIntake + entry.amountMl
-        preferencesDataStore.setLastIntakeTimestamp(entry.timestamp)
+        val latestTimestamp = waterEntryDao.getLatestEntryTimestamp() ?: entry.timestamp
+        preferencesDataStore.setLastIntakeTimestamp(latestTimestamp)
         triggerWidgetRefresh()
-        triggerIntakeReminderReset()
+        triggerIntakeReminderReset(latestTimestamp)
         checkAndPostIntakeCelebration(entry.dateKey, prevIntake, newIntake)
         return id
     }
@@ -196,7 +198,18 @@ class WaterRepository(
 
     suspend fun deleteEntry(id: Long) {
         waterEntryDao.deleteEntryById(id)
+        val latestTimestamp = waterEntryDao.getLatestEntryTimestamp() ?: 0L
+        preferencesDataStore.setLastIntakeTimestamp(latestTimestamp)
         triggerWidgetRefresh()
+        triggerIntakeReminderReset(latestTimestamp)
+    }
+
+    suspend fun updateEntry(entry: WaterEntry) {
+        waterEntryDao.updateEntry(entry)
+        val latestTimestamp = waterEntryDao.getLatestEntryTimestamp() ?: 0L
+        preferencesDataStore.setLastIntakeTimestamp(latestTimestamp)
+        triggerWidgetRefresh()
+        triggerIntakeReminderReset(latestTimestamp)
     }
 
     suspend fun saveProfile(profile: UserProfile, calculatedTargetMl: Int? = null) {
@@ -247,12 +260,15 @@ class WaterRepository(
 
     suspend fun clearHistory() {
         waterEntryDao.clearAll()
+        preferencesDataStore.setLastIntakeTimestamp(0L)
         triggerWidgetRefresh()
+        triggerIntakeReminderReset(0L)
     }
 
     suspend fun clearAllData() {
         waterEntryDao.clearAll()
         preferencesDataStore.clearAll()
         triggerWidgetRefresh()
+        triggerIntakeReminderReset(0L)
     }
 }
