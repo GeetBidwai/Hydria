@@ -1614,6 +1614,94 @@ class ExampleUnitTest {
         assertEquals(state1.totalSuccessfulDays, state2.totalSuccessfulDays)
         assertEquals(state1.completedMonthlyCollectionsCount, state2.completedMonthlyCollectionsCount)
     }
+
+    @Test
+    fun testGravityAngleAcrossCardinalAndIntermediateOrientations() {
+        val deviceTilt = com.example.core.ui.sensors.DeviceTilt
+
+        // 1. Portrait upright (sensor: x=0, y=+9.81) -> water settles at bottom (0°)
+        val (gxUp, gyUp) = deviceTilt.mapSensorToCanvasGravity(0f, 9.81f, android.view.Surface.ROTATION_0)
+        assertEquals(0f, gxUp, 0.001f)
+        assertEquals(9.81f, gyUp, 0.001f)
+        assertEquals(0f, deviceTilt.computeGravityAngleDegrees(gxUp, gyUp), 0.01f)
+
+        // 2. Landscape left (top rotated left -> sensor: x=+9.81, y=0) -> water settles on left (+90°)
+        val (gxLeft, gyLeft) = deviceTilt.mapSensorToCanvasGravity(9.81f, 0f, android.view.Surface.ROTATION_0)
+        assertEquals(-9.81f, gxLeft, 0.001f)
+        assertEquals(0f, gyLeft, 0.001f)
+        assertEquals(90f, deviceTilt.computeGravityAngleDegrees(gxLeft, gyLeft), 0.01f)
+
+        // 3. Landscape right (top rotated right -> sensor: x=-9.81, y=0) -> water settles on right (-90°)
+        val (gxRight, gyRight) = deviceTilt.mapSensorToCanvasGravity(-9.81f, 0f, android.view.Surface.ROTATION_0)
+        assertEquals(9.81f, gxRight, 0.001f)
+        assertEquals(0f, gyRight, 0.001f)
+        assertEquals(-90f, deviceTilt.computeGravityAngleDegrees(gxRight, gyRight), 0.01f)
+
+        // 4. Upside-down portrait (sensor: x=0, y=-9.81) -> water settles at top (±180°)
+        val (gxDown, gyDown) = deviceTilt.mapSensorToCanvasGravity(0f, -9.81f, android.view.Surface.ROTATION_0)
+        assertEquals(0f, gxDown, 0.001f)
+        assertEquals(-9.81f, gyDown, 0.001f)
+        assertEquals(180f, kotlin.math.abs(deviceTilt.computeGravityAngleDegrees(gxDown, gyDown)), 0.01f)
+
+        // 5. Intermediate 45° tilt left (sensor: x=+6.93, y=+6.93) -> +45°
+        val (gx45, gy45) = deviceTilt.mapSensorToCanvasGravity(6.937f, 6.937f, android.view.Surface.ROTATION_0)
+        assertEquals(45f, deviceTilt.computeGravityAngleDegrees(gx45, gy45), 0.1f)
+    }
+
+    @Test
+    fun testContinuous360DegreeUnwrappingWithoutBoundaryJump() {
+        val deviceTilt = com.example.core.ui.sensors.DeviceTilt
+
+        // Simulate slow 360-degree clockwise/CCW rotation in 10-degree steps
+        var continuous = 0f
+        for (stepDeg in 10..360 step 10) {
+            val rad = Math.toRadians(stepDeg.toDouble())
+            // Rotating device CCW: sensor x = 9.81 * sin(rad), y = 9.81 * cos(rad)
+            val sx = (9.81 * kotlin.math.sin(rad)).toFloat()
+            val sy = (9.81 * kotlin.math.cos(rad)).toFloat()
+            val (gx, gy) = deviceTilt.mapSensorToCanvasGravity(sx, sy, android.view.Surface.ROTATION_0)
+            val rawAngle = deviceTilt.computeGravityAngleDegrees(gx, gy)
+            val next = deviceTilt.unwrapAngleDegrees(continuous, rawAngle)
+
+            // Every step must advance smoothly by ~+10° without jumping -350° across ±180°
+            val delta = next - continuous
+            assertEquals("Step $stepDeg should advance smoothly by +10°", 10f, delta, 0.1f)
+            continuous = next
+        }
+        assertEquals(360f, continuous, 0.1f)
+    }
+
+    @Test
+    fun testDisplayRotationCompensationKeepsWaterAtPhysicalBottom() {
+        val deviceTilt = com.example.core.ui.sensors.DeviceTilt
+
+        // When auto-rotate switches to ROTATION_90 (phone held landscape left: sx=+9.81, sy=0),
+        // Canvas gravity should point straight down on the rotated screen (0°).
+        val (gx90, gy90) = deviceTilt.mapSensorToCanvasGravity(9.81f, 0f, android.view.Surface.ROTATION_90)
+        assertEquals(0f, deviceTilt.computeGravityAngleDegrees(gx90, gy90), 0.01f)
+
+        // When auto-rotate switches to ROTATION_270 (landscape right: sx=-9.81, sy=0),
+        // Canvas gravity should also point straight down on the rotated screen (0°).
+        val (gx270, gy270) = deviceTilt.mapSensorToCanvasGravity(-9.81f, 0f, android.view.Surface.ROTATION_270)
+        assertEquals(0f, deviceTilt.computeGravityAngleDegrees(gx270, gy270), 0.01f)
+
+        // When auto-rotate switches to ROTATION_180 (upside down: sx=0, sy=-9.81),
+        // Canvas gravity should point straight down on the rotated screen (0°).
+        val (gx180, gy180) = deviceTilt.mapSensorToCanvasGravity(0f, -9.81f, android.view.Surface.ROTATION_180)
+        assertEquals(0f, deviceTilt.computeGravityAngleDegrees(gx180, gy180), 0.01f)
+    }
+
+    @Test
+    fun testRapidOrientationFlipShortestArc() {
+        val deviceTilt = com.example.core.ui.sensors.DeviceTilt
+        // Flipping rapidly from +170° to -170° should move +20° (to +190°), not -340°
+        val next = deviceTilt.unwrapAngleDegrees(170f, -170f)
+        assertEquals(190f, next, 0.01f)
+
+        // Flipping back from +190° to +170° should move -20° (back to 170°)
+        val back = deviceTilt.unwrapAngleDegrees(190f, 170f)
+        assertEquals(170f, back, 0.01f)
+    }
 }
 
 

@@ -1,6 +1,7 @@
 package com.example.core.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -17,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -27,6 +29,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -51,18 +54,17 @@ import kotlin.math.sin
 /**
  * Hydria Circular Liquid Progress Indicator.
  *
- * Replaces the old cylindrical graphic with a native, circular liquid fill.
- * The liquid fills the circular container from bottom upward according to hydration progress:
+ * Native circular liquid fill that responds dynamically to physical gravity across
+ * full 360-degree device orientation:
  * - 0%: container is empty.
- * - 25%: occupies bottom quarter.
+ * - 25%: occupies lower quarter in gravity's direction.
  * - 50%: reaches exact midpoint.
  * - 75%: occupies three quarters.
  * - 100%: completely filled.
  *
- * Realistically responds to physical device tilt:
- * - Tilting left/right tilts the liquid surface naturally.
- * - Level position allows the liquid to settle horizontally.
- * - Liquid shape is strictly clipped to the circular boundary.
+ * The circular ring and typography remain stationary while only the clipped liquid
+ * settles smoothly toward physical gravity at any angle (upright, tilted, landscape,
+ * or upside down).
  */
 @Composable
 fun WaterCircularProgress(
@@ -90,17 +92,23 @@ fun WaterCircularProgress(
         label = "water_progress_anim"
     )
 
-    // Gentle ambient harmonic wave motion
+    // Continuous seamless harmonic wave motion
     val infiniteTransition = rememberInfiniteTransition(label = "wave_motion")
     val wavePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 2f * Math.PI.toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "wave_phase"
     )
+
+    // Reusable Path instances to avoid per-frame allocations during 60/120fps wave & tilt draws
+    val circleClip = remember { Path() }
+    val backWavePath = remember { Path() }
+    val frontWavePath = remember { Path() }
+    val crestPath = remember { Path() }
 
     Box(
         modifier = modifier
@@ -114,7 +122,7 @@ fun WaterCircularProgress(
             val innerRadius = outerRadius - stroke / 2f
             val center = this.center
 
-            // 1. Circular Container Base (Transparent ocean-tinted glass interior)
+            // 1. Circular Container Base (Stationary ocean-tinted glass interior)
             drawCircle(
                 color = OceanAqua.copy(alpha = 0.05f),
                 radius = innerRadius,
@@ -127,128 +135,112 @@ fun WaterCircularProgress(
                 style = Stroke(width = 1.dp.toPx())
             )
 
-            // 2. Circular Liquid Fill (Clipped strictly to the circular boundary)
+            // 2. Gravity-Responsive Circular Liquid Fill (Clipped strictly to circular boundary)
             if (animatedProgress > 0.005f) {
-                val circleClip = Path().apply {
-                    addOval(Rect(center, innerRadius))
-                }
+                circleClip.reset()
+                circleClip.addOval(Rect(center, innerRadius))
 
                 clipPath(circleClip) {
-                    val baseWaterLevelY = center.y + innerRadius - (2f * innerRadius * animatedProgress)
+                    // Rotate only the liquid coordinate frame toward physical gravity down
+                    rotate(degrees = tilt.gravityAngleDegrees, pivot = center) {
+                        val baseWaterLevelY = center.y + innerRadius - (2f * innerRadius * animatedProgress)
 
-                    // Physics tilt slope based on device roll
-                    val tiltSlope = DeviceTilt.computeSurfaceSlope(tilt.roll, maxSlope = 0.50f)
+                        // Dampen wave height near empty (0%) and full (100%); gently boost during rotation
+                        val fullnessDamping = (1f - abs(animatedProgress - 0.5f) * 1.8f).coerceIn(0.12f, 1f)
+                        val sloshBoost = 1f + (tilt.sloshFactor * 0.85f)
+                        val amp1 = 5f * fullnessDamping * sloshBoost
+                        val amp2 = 2.5f * fullnessDamping * sloshBoost
 
-                    // Wave amplitude dampening near the very bottom (0%) and top (100%)
-                    val fullnessDamping = (1f - abs(animatedProgress - 0.5f) * 1.8f).coerceIn(0.12f, 1f)
-                    val amp1 = 5f * fullnessDamping
-                    val amp2 = 2.5f * fullnessDamping
+                        val startX = center.x - innerRadius - 28f
+                        val endX = center.x + innerRadius + 28f
+                        val bottomY = center.y + innerRadius + 28f
 
-                    val startX = center.x - innerRadius - 20f
-                    val endX = center.x + innerRadius + 20f
-                    val bottomY = center.y + innerRadius + 25f
-
-                    // Layer A: Secondary background wave for oceanic volume depth
-                    val backWavePath = Path().apply {
-                        moveTo(startX, bottomY)
+                        // Layer A: Secondary background wave for oceanic volume depth
+                        backWavePath.reset()
+                        backWavePath.moveTo(startX, bottomY)
                         var x = startX
-                        val step = 4f
+                        val backStep = 4f
                         while (x <= endX) {
                             val relativeX = (x - startX) / (endX - startX)
                             val waveOffset = sin(relativeX * 2.2f * Math.PI + wavePhase + Math.PI.toFloat()).toFloat() * (amp1 * 0.8f)
-                            val tiltOffset = -(x - center.x) * tiltSlope
-                            val y = baseWaterLevelY + tiltOffset + waveOffset + 3f
-                            lineTo(x, y)
-                            x += step
+                            val y = baseWaterLevelY + waveOffset + 3f
+                            backWavePath.lineTo(x, y)
+                            x += backStep
                         }
-                        lineTo(endX, bottomY)
-                        close()
-                    }
+                        backWavePath.lineTo(endX, bottomY)
+                        backWavePath.close()
 
-                    drawPath(
-                        path = backWavePath,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                OceanCyan.copy(alpha = 0.30f),
-                                OceanAqua.copy(alpha = 0.45f),
-                                OceanDeep.copy(alpha = 0.55f)
-                            ),
-                            startY = center.y - innerRadius,
-                            endY = center.y + innerRadius
+                        drawPath(
+                            path = backWavePath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    OceanCyan.copy(alpha = 0.30f),
+                                    OceanAqua.copy(alpha = 0.45f),
+                                    OceanDeep.copy(alpha = 0.55f)
+                                ),
+                                startY = center.y - innerRadius,
+                                endY = center.y + innerRadius
+                            )
                         )
-                    )
 
-                    // Layer B: Primary foreground liquid wave
-                    val frontWavePath = Path().apply {
-                        moveTo(startX, bottomY)
-                        var x = startX
-                        val step = 3f
-                        while (x <= endX) {
-                            val relativeX = (x - startX) / (endX - startX)
-                            val waveOffset = (sin(relativeX * 2.2f * Math.PI + wavePhase).toFloat() * amp1) +
-                                    (cos(relativeX * 4.4f * Math.PI - wavePhase * 0.7f).toFloat() * amp2)
-                            val tiltOffset = -(x - center.x) * tiltSlope
-                            val y = baseWaterLevelY + tiltOffset + waveOffset
-                            lineTo(x, y)
-                            x += step
-                        }
-                        lineTo(endX, bottomY)
-                        close()
-                    }
+                        // Layer B: Primary foreground liquid wave & Layer C: Foam crest
+                        frontWavePath.reset()
+                        frontWavePath.moveTo(startX, bottomY)
+                        crestPath.reset()
 
-                    drawPath(
-                        path = frontWavePath,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                OceanCyan.copy(alpha = 0.65f),
-                                OceanAqua.copy(alpha = 0.78f),
-                                OceanDeep.copy(alpha = 0.88f)
-                            ),
-                            startY = center.y - innerRadius,
-                            endY = center.y + innerRadius
-                        )
-                    )
-
-                    // Layer C: Gentle white foam crest at liquid surface
-                    val crestPath = Path().apply {
-                        var x = startX
-                        val step = 3f
+                        x = startX
+                        val frontStep = 3f
                         var isFirst = true
                         while (x <= endX) {
                             val relativeX = (x - startX) / (endX - startX)
                             val waveOffset = (sin(relativeX * 2.2f * Math.PI + wavePhase).toFloat() * amp1) +
                                     (cos(relativeX * 4.4f * Math.PI - wavePhase * 0.7f).toFloat() * amp2)
-                            val tiltOffset = -(x - center.x) * tiltSlope
-                            val y = baseWaterLevelY + tiltOffset + waveOffset
+                            val y = baseWaterLevelY + waveOffset
+                            frontWavePath.lineTo(x, y)
                             if (isFirst) {
-                                moveTo(x, y)
+                                crestPath.moveTo(x, y)
                                 isFirst = false
                             } else {
-                                lineTo(x, y)
+                                crestPath.lineTo(x, y)
                             }
-                            x += step
+                            x += frontStep
                         }
-                    }
+                        frontWavePath.lineTo(endX, bottomY)
+                        frontWavePath.close()
 
-                    drawPath(
-                        path = crestPath,
-                        color = Color.White.copy(alpha = 0.55f),
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                    )
+                        drawPath(
+                            path = frontWavePath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    OceanCyan.copy(alpha = 0.65f),
+                                    OceanAqua.copy(alpha = 0.78f),
+                                    OceanDeep.copy(alpha = 0.88f)
+                                ),
+                                startY = center.y - innerRadius,
+                                endY = center.y + innerRadius
+                            )
+                        )
 
-                    // Layer D: Ambient liquid bubble gleams
-                    val bubbleOffset1 = Offset(center.x - innerRadius * 0.40f, center.y + innerRadius * 0.45f)
-                    val bubbleOffset2 = Offset(center.x + innerRadius * 0.35f, center.y + innerRadius * 0.25f)
-                    if (baseWaterLevelY < bubbleOffset1.y) {
-                        drawCircle(color = Color.White.copy(alpha = 0.30f), radius = 3.dp.toPx(), center = bubbleOffset1)
-                    }
-                    if (baseWaterLevelY < bubbleOffset2.y) {
-                        drawCircle(color = Color.White.copy(alpha = 0.25f), radius = 2.dp.toPx(), center = bubbleOffset2)
+                        drawPath(
+                            path = crestPath,
+                            color = Color.White.copy(alpha = 0.55f),
+                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                        )
+
+                        // Layer D: Ambient liquid bubble gleams submerged in the gravity-lowered region
+                        val bubbleOffset1 = Offset(center.x - innerRadius * 0.38f, center.y + innerRadius * 0.45f)
+                        val bubbleOffset2 = Offset(center.x + innerRadius * 0.34f, center.y + innerRadius * 0.25f)
+                        if (baseWaterLevelY < bubbleOffset1.y - 4.dp.toPx()) {
+                            drawCircle(color = Color.White.copy(alpha = 0.30f), radius = 3.dp.toPx(), center = bubbleOffset1)
+                        }
+                        if (baseWaterLevelY < bubbleOffset2.y - 4.dp.toPx()) {
+                            drawCircle(color = Color.White.copy(alpha = 0.25f), radius = 2.dp.toPx(), center = bubbleOffset2)
+                        }
                     }
                 }
             }
 
-            // 3. Circular Progress Ring Track
+            // 3. Circular Progress Ring Track (Stationary)
             drawCircle(
                 color = WaterOutline.copy(alpha = 0.35f),
                 radius = outerRadius,
